@@ -1,9 +1,14 @@
 #ifndef LITTLE_XML_H
 #define LITTLE_XML_H
+/******************Include Start*******************/
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/*******************Include End********************/
+
+/*******************Define Start*******************/
 
 #ifndef TRUE
     #define TRUE 1
@@ -12,388 +17,272 @@
     #define FALSE 0
 #endif
 
-//
-//  Definitions
-//
+#define LEX_BUF_SIZE 256
 
-int ends_with(const char* haystack, const char* needle)
-{
-    int h_len = strlen(haystack);
-    int n_len = strlen(needle);
+/********************Define End********************/
 
-    if (h_len < n_len)
-        return FALSE;
+/********************Enum Start********************/
 
-    for (int i = 0; i < n_len; i++) {
-        if (haystack[h_len - n_len + i] != needle[i])
-            return FALSE;
-    }
-
-    return TRUE;
-}
-
-struct _XMLAttribute
-{
-    char* key;
-    char* value;
+enum TagType {
+    TAG_UNSUPPORTED = -1,
+    TAG_START,
+    TAG_INLINE
 };
-typedef struct _XMLAttribute XMLAttribute;
 
-void XMLAttribute_free(XMLAttribute* attr);
+/*********************Enum End*********************/
 
-struct _XMLAttributeList
-{
-    int heap_size;
-    int size;
-    XMLAttribute* data;
+/************Struct-Declaration Start**************/
+
+struct XMLAttribute {
+    char *key, *value;
+
+    void (*free)(struct XMLAttribute*);
 };
-typedef struct _XMLAttributeList XMLAttributeList;
 
-void XMLAttributeList_init(XMLAttributeList* list);
-void XMLAttributeList_add(XMLAttributeList* list, XMLAttribute* attr);
-void XMLAttributeList_free(XMLAttributeList* list);
+struct XMLAttributeList {
+    size_t size, heapSize;
+    struct XMLAttribute **attribute;
 
-struct _XMLNodeList
-{
-    int heap_size;
-    int size;
-    struct _XMLNode** data;
+    int (*add)(struct XMLAttributeList*, struct XMLAttribute);
+    void (*free)(struct XMLAttributeList*);
+
+    char* (*getAttributeValue)(struct XMLAttributeList*, char*);
+    struct XMLAttribute* (*getAttribute)(struct XMLAttributeList*, char*);
 };
-typedef struct _XMLNodeList XMLNodeList;
 
-void XMLNodeList_init(XMLNodeList* list);
-void XMLNodeList_add(XMLNodeList* list, struct _XMLNode* node);
-struct _XMLNode* XMLNodeList_at(XMLNodeList* list, int index);
-void XMLNodeList_free(XMLNodeList* list);
+struct XMLNodeList {
+    size_t size, heapSize;
+    struct XMLNode **data;
 
-struct _XMLNode
-{
-    char* tag;
-    char* inner_text;
-    struct _XMLNode* parent;
-    XMLAttributeList attributes;
-    XMLNodeList children;
+    int (*add)(struct XMLNodeList*, struct XMLNode*, struct XMLNode*);
+    void (*free)(struct XMLNodeList*);
 };
-typedef struct _XMLNode XMLNode;
 
-XMLNode* XMLNode_new(XMLNode* parent);
-void XMLNode_free(XMLNode* node);
-XMLNode* XMLNode_child(XMLNode* parent, int index);
-XMLNodeList* XMLNode_children(XMLNode* parent, const char* tag);
-char* XMLNode_attr_val(XMLNode* node, char* key);
-XMLAttribute* XMLNode_attr(XMLNode* node, char* key);
+struct XMLNode {
+    char *tag, *inner_text;
 
-struct _XMLDocument
-{
-    XMLNode* root;
-    char* version;
-    char* encoding;
+    struct XMLNode *parent;
+    struct XMLAttributeList attributes;
+    struct XMLNodeList children;
+
+    int (*add)(struct XMLNode*, struct XMLNode*);
+    void (*free)(struct XMLNode*);
+
+    char* (*getAttributeValue)(struct XMLNode*, char*);
+    struct XMLAttribute* (*getAttribute)(struct XMLNode*, char*);
 };
-typedef struct _XMLDocument XMLDocument;
 
-int XMLDocument_load(XMLDocument* doc, const char* path);
-int XMLDocument_write(XMLDocument* doc, const char* path, int indent);
-void XMLDocument_free(XMLDocument* doc);
+struct XMLDocument {
+    struct XMLNode *root;
+    char *version, *encoding;
+    int success;
 
-//
-//  Implementation
-//
+    void (*free)(struct XMLDocument*);
+};
 
-void XMLAttribute_free(XMLAttribute* attr)
-{
-    if(NULL != attr)
-    {
-        free(attr->key);
-        free(attr->value);
-        attr->key = attr->value = NULL;
-    }
-}
+/*************Struct-Declaration End***************/
 
-void XMLAttributeList_init(XMLAttributeList* list)
-{
-    list->heap_size = 1;
-    list->size = 0;
-    list->data = (XMLAttribute*) malloc(sizeof(XMLAttribute) * list->heap_size);
-}
+/*****************Prototype Start******************/
 
-void XMLAttributeList_add(XMLAttributeList* list, XMLAttribute* attr)
-{
-    while (list->size >= list->heap_size) {
-        list->heap_size *= 2;
-        list->data = (XMLAttribute*) realloc(list->data, sizeof(XMLAttribute) * list->heap_size);
-    }
+/* XML Attribute Functions Prototype Start */
 
-    list->data[list->size++] = *attr;
-}
+struct XMLAttribute* XMLAttribute_init(char *key, char *value);
 
-void XMLAttributeList_free(XMLAttributeList* list)
-{
-    if(NULL != list)
-    {
-        int i = 0;
-        for(;i<list->size;++i)
-            XMLAttribute_free(&list->data[i]);
+static void XMLAttribute_free(struct XMLAttribute *attr);
 
-        free(list->data);
-        list->data = NULL;
+/* XML Attribute Functions Prototype End */
 
-        memset(list, '\0', sizeof(XMLAttributeList));
-    }
-}
+/* XML Attribute List Functions Prototype Start */
 
-void XMLNodeList_init(XMLNodeList* list)
-{
-    list->heap_size = 1;
-    list->size = 0;
-    list->data = (XMLNode**) malloc(sizeof(XMLNode*) * list->heap_size);
-}
+struct XMLAttributeList  XMLAttributeList_init();
 
-void XMLNodeList_add(XMLNodeList* list, XMLNode* node)
-{
-    while (list->size >= list->heap_size) {
-        list->heap_size *= 2;
-        list->data = (XMLNode**) realloc(list->data, sizeof(XMLNode*) * list->heap_size);
-    }
+static int XMLAttributeList_add(struct XMLAttributeList *self, struct XMLAttribute attr);
+static void XMLAttributeList_free(struct XMLAttributeList *self);
 
-    list->data[list->size++] = node;
-}
+static struct XMLAttribute* XMLAttributeList_getAttribute(struct XMLAttributeList *self, char *key);
+static char* XMLAttributeList_getAttributeValue(struct XMLAttributeList *self, char *key);
 
-XMLNode* XMLNodeList_at(XMLNodeList* list, int index)
-{
-    return list->data[index];
-}
+/* XML Attribute List Functions Prototype End */
 
-void XMLNodeList_free(XMLNodeList* list)
-{
-    if(NULL != list)
-    {
-        for(int i=0;i<list->size;++i) {
-            XMLNode_free(list->data[i]);
-            free(list->data[i]);
-            list->data[i] = NULL;
+/* XML Node Functions Prototype Start */
+
+struct XMLNode* XMLNode_init();
+
+static int XMLNode_add(struct XMLNode *self, struct XMLNode *node);
+static void XMLNode_free(struct XMLNode *self);
+static struct XMLAttribute* XMLNode_getAttribute(struct XMLNode *node, char *key);
+static char* XMLNode_getAttributeValue(struct XMLNode *node, char *key);
+
+/* XML Node Functions Prototype End */
+
+/* XML Node List Functions Prototype Start */
+
+struct XMLNodeList XMLNodeList_init();
+
+static int XMLNodeList_add(struct XMLNodeList *self, struct XMLNode *parent, struct XMLNode *node);
+static void XMLNodeList_free(struct XMLNodeList *self);
+
+/* XML Node List Functions Prototype End */
+
+/* XML Document Functions Prototype Start */
+
+struct XMLDocument XMLDocument_load(FILE *fp);
+int XMLDocument_write(struct XMLDocument *doc, const char *path, int indent);
+
+static void XMLDocument_free(struct XMLDocument *doc);
+
+/* XML Document Functions Prototype End */
+
+static char* lxmlStrdup(const char *str);
+static char* lxmlReadXmlContentsIntoMemory(FILE *fp);
+
+static enum TagType lxmlParseAttrs(char *buf, size_t *i, char *lex, size_t *lexi, struct XMLNode *curr_node);
+
+static int lxmlEndsWith(const char *haystack, const char *needle);
+static int lxmlParseEndOfNode(const char *buf, size_t *bufOffset, char *lex, size_t lexBufSize, size_t *lexi);
+
+static void node_out(FILE *file, struct XMLNode *node, int indent, int times);
+
+/******************Prototype End*******************/
+
+/*******************Public Start*******************/
+
+/**
+ * @brief Initialises an 'XMLAttribute'
+ *        If 'key'|'value' are supplied then a deep-copy of these values will be made
+ *        **Note:** Both 'key' and 'value' if these wish to be set
+ *
+ * @param key - Optional XML key attribute to set
+ * @param value - Optional XML value attribute to set
+ * @return attr - A new heap allocated 'XMLAttribute'
+ */
+struct XMLAttribute* XMLAttribute_init(char *key, char *value) {
+    struct XMLAttribute *attr = calloc(1, sizeof(struct XMLAttribute));
+
+    if(NULL != attr) {
+        attr->free = XMLAttribute_free;
+
+        if(NULL != key && NULL != value) {
+            size_t keylen = strlen(key),
+                   valuelen = strlen(value);
+
+            if(0 != keylen && 0 != valuelen) {
+                attr->key = lxmlStrdup(key);
+                attr->value = lxmlStrdup(value);
+
+                if(NULL == attr->key || NULL == attr->value) {
+                    free(attr->key);
+                    free(attr->value);
+                    attr->key = attr->value = NULL;
+
+                    free(attr);
+                    attr = NULL;
+                }
+            }
         }
-
-        free(list->data);
-        list->data = NULL;
-
-        memset(list, '\0', sizeof(XMLNodeList));
     }
-}
 
-XMLNode* XMLNode_new(XMLNode* parent)
-{
-    XMLNode* node = (XMLNode*) malloc(sizeof(XMLNode));
-    node->parent = parent;
-    node->tag = NULL;
-    node->inner_text = NULL;
-    XMLAttributeList_init(&node->attributes);
-    XMLNodeList_init(&node->children);
-    if (parent)
-        XMLNodeList_add(&parent->children, node);
-    return node;
-}
+    return attr;
+} /* End of XMLAttribute_init */
 
-void XMLNode_free(XMLNode* node) {
+/**
+ * @brief Initialises an 'XMLAttributeList'
+ */
+struct XMLAttributeList XMLAttributeList_init() {
+    struct XMLAttributeList list = { 0, 0, 0, XMLAttributeList_add, XMLAttributeList_free, XMLAttributeList_getAttributeValue, XMLAttributeList_getAttribute };
+    return list;
+} /* End of XMLAttributeList_init */
+
+struct XMLNodeList XMLNodeList_init() {
+    struct XMLNodeList list = { 0, 0, 0, XMLNodeList_add, XMLNodeList_free };
+    return list;
+} /* End of XMLNodeList_init */
+
+/**
+ * @brief Initialises an 'XMLNode'
+ *
+ * @return node - A 'calloc' 'XMLNode' that has been initialised
+ */
+struct XMLNode* XMLNode_init() {
+    struct XMLNode *node = calloc(1, sizeof(struct XMLNode));
+
     if(NULL != node) {
-        if (node->tag) {
+        node->attributes = XMLAttributeList_init();
+        node->children = XMLNodeList_init();
+
+        node->add = XMLNode_add;
+        node->free = XMLNode_free;
+
+        node->getAttribute = XMLNode_getAttribute;
+        node->getAttributeValue = XMLNode_getAttributeValue;
+    }
+
+    return node;
+} /* End of XMLNode_init */
+
+void XMLNode_free(struct XMLNode *node) {
+    if(NULL != node) {
+        if(node->tag) {
             free(node->tag);
             node->tag = NULL;
         }
 
-        if (node->inner_text) {
+        if(node->inner_text) {
             free(node->inner_text);
             node->inner_text = NULL;
         }
 
-        XMLAttributeList_free(&node->attributes);
-        XMLNodeList_free(&node->children);
-        memset(node, '\0', sizeof(XMLNode));
+        node->attributes.free(&node->attributes);
+        node->children.free(&node->children);
+        memset(node, '\0', sizeof(struct XMLNode));
     }
-}
+} /* End of XMLNode_free */
 
-XMLNode* XMLNode_child(XMLNode* parent, int index)
-{
-    return (NULL != parent && parent->children.size > index) ? parent->children.data[index] : NULL;
-}
+struct XMLDocument XMLDocument_load(FILE *fp) {
+    struct XMLDocument doc = { 0, 0, 0, 0, XMLDocument_free };
 
-XMLNodeList* XMLNode_children(XMLNode* parent, const char* tag)
-{
-    XMLNodeList* list = (XMLNodeList*) malloc(sizeof(XMLNodeList));
-    XMLNodeList_init(list);
+    char *buf = lxmlReadXmlContentsIntoMemory(fp);
 
-    for (int i = 0; i < parent->children.size; i++)
-    {
-        XMLNode* child = parent->children.data[i];
+    char lex[LEX_BUF_SIZE+1] = { 0 };
+    size_t i = 0, lexi = 0;
 
-        if (!strcmp(child->tag, tag))
-            XMLNodeList_add(list, child);
-    }
+    struct XMLNode *curr_node = NULL, *tmp = NULL;
 
-    return list;
-}
+    doc.root = XMLNode_init(NULL);
+    curr_node = doc.root;
 
-char* XMLNode_attr_val(XMLNode* node, char* key)
-{
-    char *attrVal = NULL;
+    while('\0' != buf[i]) {
 
-    if(NULL != node && NULL != key)
-    {
-        for (int i = 0; i < node->attributes.size; i++)
-        {
-            XMLAttribute attr = node->attributes.data[i];
-            if (!strcmp(attr.key, key)) {
-                size_t keyStrLen = strlen(attr.key);
-                attrVal = calloc(keyStrLen, sizeof(char));
-
-                if(NULL != attrVal)
-                    strcpy(attrVal, attr.value);
-
-                break;
-            }
-        }
-    }
-
-    return attrVal;
-}
-
-XMLAttribute* XMLNode_attr(XMLNode* node, char* key)
-{
-    for (int i = 0; i < node->attributes.size; i++) {
-        XMLAttribute* attr = &node->attributes.data[i];
-        if (!strcmp(attr->key, key))
-            return attr;
-    }
-    return NULL;
-}
-
-enum _TagType
-{
-    TAG_START,
-    TAG_INLINE
-};
-typedef enum _TagType TagType;
-
-static TagType parse_attrs(char* buf, int* i, char* lex, int* lexi, XMLNode* curr_node)
-{
-    XMLAttribute curr_attr = {0, 0};
-    while (buf[*i] != '>') {
-        lex[(*lexi)++] = buf[(*i)++];
-
-        // Tag name
-        if (buf[*i] == ' ' && !curr_node->tag) {
-            lex[*lexi] = '\0';
-            curr_node->tag = strdup(lex);
-            *lexi = 0;
-            (*i)++;
-            continue;
-        }
-
-        // Usually ignore spaces
-        if (lex[*lexi-1] == ' ') {
-            (*lexi)--;
-        }
-
-        // Attribute key
-        if (buf[*i] == '=') {
-            lex[*lexi] = '\0';
-            curr_attr.key = strdup(lex);
-            *lexi = 0;
-            continue;
-        }
-
-        // Attribute value
-        if (buf[*i] == '"') {
-            if (!curr_attr.key) {
-                fprintf(stderr, "Value has no key\n");
-                return TAG_START;
-            }
-
-            *lexi = 0;
-            (*i)++;
-
-            while (buf[*i] != '"')
-                lex[(*lexi)++] = buf[(*i)++];
-            lex[*lexi] = '\0';
-            curr_attr.value = strdup(lex);
-            XMLAttributeList_add(&curr_node->attributes, &curr_attr);
-            curr_attr.key = NULL;
-            curr_attr.value = NULL;
-            *lexi = 0;
-            (*i)++;
-            continue;
-        }
-
-        // Inline node
-        if (buf[*i - 1] == '/' && buf[*i] == '>') {
-            lex[*lexi] = '\0';
-            if (!curr_node->tag)
-                curr_node->tag = strdup(lex);
-            (*i)++;
-            return TAG_INLINE;
-        }
-    }
-
-    return TAG_START;
-}
-
-int XMLDocument_load(XMLDocument* doc, const char* path)
-{
-    FILE* file = fopen(path, "r");
-    if (!file) {
-        fprintf(stderr, "Could not load file from '%s'\n", path);
-        return FALSE;
-    }
-
-    fseek(file, 0, SEEK_END);
-    int size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    char* buf = (char*) malloc(sizeof(char) * size + 1);
-    fread(buf, 1, size, file);
-    fclose(file);
-    buf[size] = '\0';
-
-    doc->root = XMLNode_new(NULL);
-
-    char lex[256];
-    int lexi = 0;
-    int i = 0;
-
-    XMLNode* curr_node = doc->root;
-
-    while (buf[i] != '\0')
-    {
-        if (buf[i] == '<') {
+        if('<' == buf[i]) {
             lex[lexi] = '\0';
 
-            // Inner text
-            if (lexi > 0) {
-                if (!curr_node) {
+            /* Inner text */
+            if(lexi > 0) {
+                if(NULL == curr_node) {
                     fprintf(stderr, "Text outside of document\n");
-                    return FALSE;
+                    break;
                 }
 
                 if(NULL == curr_node->inner_text)
-                    curr_node->inner_text = strdup(lex);
+                    curr_node->inner_text = lxmlStrdup(lex);
 
                 lexi = 0;
             }
 
-            // End of node
-            if (buf[i + 1] == '/') {
+            /* End of node */
+            if('/' == buf[i + 1]) {
                 i += 2;
-                while (buf[i] != '>')
-                    lex[lexi++] = buf[i++];
-                lex[lexi] = '\0';
+                
+                doc.success = lxmlParseEndOfNode(buf, &i, lex, LEX_BUF_SIZE, &lexi);
 
-                if (!curr_node) {
+                if(NULL == curr_node) {
                     fprintf(stderr, "Already at the root\n");
-                    return FALSE;
+                    break;
                 }
 
-                if (strcmp(curr_node->tag, lex)) {
+                if(0 != strcmp(NULL == curr_node->tag ? "" : curr_node->tag, lex)) {
                     fprintf(stderr, "Mismatched tags (%s != %s)\n", curr_node->tag, lex);
-                    return FALSE;
+                    break;
                 }
 
                 curr_node = curr_node->parent;
@@ -401,16 +290,16 @@ int XMLDocument_load(XMLDocument* doc, const char* path)
                 continue;
             }
 
-            // Special nodes
-            if (buf[i + 1] == '!') {
-                while (buf[i] != ' ' && buf[i] != '>')
+            /* Special nodes */
+            if('!' == buf[i + 1]) {
+                while (' ' != buf[i]  && '>' != buf[i])
                     lex[lexi++] = buf[i++];
                 lex[lexi] = '\0';
 
-                // Comments
-                if (!strcmp(lex, "<!--")) {
+                /* Comments */
+                if(0 == strcmp(lex, "<!--")) {
                     lex[lexi] = '\0';
-                    while (!ends_with(lex, "-->")) {
+                    while (FALSE == lxmlEndsWith(lex, "-->")) {
                         lex[lexi++] = buf[i++];
                         lex[lexi] = '\0';
                     }
@@ -418,96 +307,73 @@ int XMLDocument_load(XMLDocument* doc, const char* path)
                 }
             }
 
-            // Declaration tags
-            if (buf[i + 1] == '?') {
-                while (buf[i] != ' ' && buf[i] != '>')
+            /* Declaration tags */
+            if('?' == buf[i + 1]) {
+                while (' ' != buf[i] && '>' != buf[i])
                     lex[lexi++] = buf[i++];
                 lex[lexi] = '\0';
 
-                // This is the XML declaration
-                if (!strcmp(lex, "<?xml")) {
+                /* This is the XML declaration */
+                if(0 == strcmp(lex, "<?xml")) {
+                    struct XMLNode *desc = XMLNode_init(NULL);
                     lexi = 0;
-                    XMLNode* desc = XMLNode_new(NULL);
-                    parse_attrs(buf, &i, lex, &lexi, desc);
 
-                    doc->version = XMLNode_attr_val(desc, "version");
-                    doc->encoding = XMLNode_attr_val(desc, "encoding");
+                    lxmlParseAttrs(buf, &i, lex, &lexi, desc);
 
-                    XMLNode_free(desc);
+                    doc.version = desc->getAttributeValue(desc, "version");
+                    doc.encoding = desc->getAttributeValue(desc, "encoding");
+
+                    desc->free(desc);
                     free(desc);
                     desc = NULL;
                     continue;
                 }
             }
 
-            // Set current node
-            curr_node = XMLNode_new(curr_node);
+            /* Set current node */
+            tmp = XMLNode_init();
 
-            // Start tag
-            i++;
-            if (parse_attrs(buf, &i, lex, &lexi, curr_node) == TAG_INLINE) {
-                curr_node = curr_node->parent;
-                i++;
+            if(NULL != tmp) {
+                enum TagType type = TAG_UNSUPPORTED;
+                ++i;
+                /* Start tag */
+                type = lxmlParseAttrs(buf, &i, lex, &lexi, tmp);
+                curr_node->add(curr_node, tmp);
+
+                if(TAG_INLINE != type) {
+                    /* Set tag name if none */
+                    lex[lexi] = '\0';
+
+                    if(NULL == curr_node->tag)
+                        curr_node->tag = lxmlStrdup(lex);
+
+                    /* Reset lexer */
+                    lexi = 0;
+                    curr_node = tmp;
+                }
+                
+                ++i;
                 continue;
+            } else {
+                /* FIXME: Error */
+                break;
             }
-
-            // Set tag name if none
-            lex[lexi] = '\0';
-            if (!curr_node->tag)
-                curr_node->tag = strdup(lex);
-
-            // Reset lexer
-            lexi = 0;
-            i++;
-            continue;
         } else {
             lex[lexi++] = buf[i++];
         }
     }
 
+    if('\0' == buf[i])
+        doc.success = TRUE;
 
     free(buf);
 
-    return TRUE;
-}
+    return doc;
+} /* End of XMLDocument_load */
 
-static void node_out(FILE* file, XMLNode* node, int indent, int times)
-{
-    for (int i = 0; i < node->children.size; i++) {
-        XMLNode* child = node->children.data[i];
-
-        if (times > 0)
-            fprintf(file, "%*s", indent * times, " ");
-
-        fprintf(file, "<%s", child->tag);
-        for (int i = 0; i < child->attributes.size; i++) {
-            XMLAttribute attr = child->attributes.data[i];
-            if (!attr.value || !strcmp(attr.value, ""))
-                continue;
-            fprintf(file, " %s=\"%s\"", attr.key, attr.value);
-        }
-
-        if (child->children.size == 0 && !child->inner_text)
-            fprintf(file, " />\n");
-        else {
-            fprintf(file, ">");
-            if (child->children.size == 0)
-                fprintf(file, "%s</%s>\n", child->inner_text, child->tag);
-            else {
-                fprintf(file, "\n");
-                node_out(file, child, indent, times + 1);
-                if (times > 0)
-                    fprintf(file, "%*s", indent * times, " ");
-                fprintf(file, "</%s>\n", child->tag);
-            }
-        }
-    }
-}
-
-int XMLDocument_write(XMLDocument* doc, const char* path, int indent)
-{
-    FILE* file = fopen(path, "w");
-    if (!file) {
+int XMLDocument_write(struct XMLDocument *doc, const char *path, int indent) {
+    FILE *file = fopen(path, "w");
+    if(!file) {
         fprintf(stderr, "Could not open file '%s'\n", path);
         return FALSE;
     }
@@ -521,21 +387,473 @@ int XMLDocument_write(XMLDocument* doc, const char* path, int indent)
     fclose(file);
 
     return TRUE;
-}
+} /* End of XMLDocument_write */
 
-void XMLDocument_free(XMLDocument* doc)
-{
-    if(NULL != doc)
-    {
-        XMLNode_free(doc->root);
-        free(doc->root);
-        doc->root = NULL;
+/********************Public End********************/
 
-        free(doc->version);
-        free(doc->encoding);
+/******************Private Start*******************/
 
-        doc->version = doc->encoding = NULL;
+/**
+ * @brief Frees the data on a given 'XMLAttribute'
+ *
+ * @param self - A reference to the 'XMLAttribute' to free
+ */
+static void XMLAttribute_free(struct XMLAttribute *self) {
+    if(NULL != self) {
+        free(self->key);
+        free(self->value);
+        self->key = self->value = NULL;
     }
-}
+} /* End of XMLAttribute_free */
 
-#endif // LITTLE_XML_H
+/**
+ * @brief Adds a given 'XMLAttribute' to 'self'
+ *
+ * @param self - A pointer to the 'XMLAttributeList' to add the 'XMLAttribute to
+ * @param attr - The 'XMLAttribute' to add to the list
+ * @return success - A Flag indicating the status of the subroutine
+ */
+static int XMLAttributeList_add(struct XMLAttributeList *self, struct XMLAttribute attr) {
+    int success = FALSE;
+
+    if(NULL != self) {
+        if(0 == self->size && NULL == self->attribute) {
+            self->attribute = calloc(1, sizeof(struct XMLAttribute*));
+
+            if(NULL != self->attribute)
+                self->heapSize = 1;
+        }
+
+        while (self->size >= self->heapSize) {
+            self->heapSize *= 2; /* FIXME: Handle 'realloc' Out of Memory Errors */
+            self->attribute = realloc(self->attribute, sizeof(struct XMLAttribute*) * self->heapSize);
+            memset(self->attribute + self->size, '\0', (sizeof(struct XMLAttribute*) * (self->heapSize - self->size)));
+        }
+
+        if(NULL != self->attribute) {
+            self->attribute[self->size] = XMLAttribute_init(attr.key, attr.value);
+
+            if(NULL != self->attribute[self->size]) {
+                ++self->size;
+                success = TRUE;
+            }
+        }
+    }
+
+    return success;
+} /* End of XMLAttributeList_add */
+
+/**
+ * @brief Frees the given 'XMLAttributeList'
+ *
+ * @param self - The 'XMLAttributeList' to free
+ */
+static void XMLAttributeList_free(struct XMLAttributeList *self) {
+    if(NULL != self) {
+        size_t i = 0;
+        for(;i<self->size;++i)
+            self->attribute[i]->free(self->attribute[i]);
+
+        for(i=0;i<self->heapSize;++i) {
+            free(self->attribute[i]);
+            self->attribute[i] = NULL;
+        }
+
+        free(self->attribute);
+        self->attribute = NULL;
+
+        memset(self, '\0', sizeof(struct XMLAttributeList));
+    }
+} /* End of XMLAttributeList_free */
+
+/**
+ * @brief Obtains the associated 'XMLAttribute' given the 'key'
+ *
+ * @param self - A reference to the 'XMLAttributeList' to search through
+ * @param key - The value to search for
+ * @return retAttr - The 'XMLAttribute' containing the associated 'key'
+ */
+static struct XMLAttribute* XMLAttributeList_getAttribute(struct XMLAttributeList *self, char *key) {
+    struct XMLAttribute *retAttr = NULL;
+
+    if(NULL != self && NULL != key) {
+        size_t i = 0;
+        for(; i < self->size; ++i) {
+            struct XMLAttribute *attr = self->attribute[i];
+
+            if(NULL != attr) {
+                if(0 == strcmp(attr->key, key)) {
+                    retAttr = attr;
+                    break;
+                }
+            }
+        }
+    }
+
+    return retAttr;
+} /* End of XMLNode_getAttribute */
+
+/**
+ * @brief Obtains the associated 'value' given the 'key' from the 'XMLAttributeList'
+ *
+ * @param self - A reference to the 'XMLAttributeList' to search from
+ * @param key - A string containing the value to search for
+ * @return attrVal - The associated attribute value from the 'XMLAttributeList'
+ */
+static char* XMLAttributeList_getAttributeValue(struct XMLAttributeList *self, char *key) {
+    char *attrVal = NULL;
+
+    if(NULL != self && NULL != key) {
+        size_t i = 0;
+        for(; i < self->size; ++i) {
+            struct XMLAttribute *attr = self->attribute[i];
+
+            if(NULL != attr) {
+                if(0 == strcmp(attr->key, key)) {
+                    attrVal = lxmlStrdup(attr->value);
+                    break;
+                }
+            }
+        }
+    }
+
+    return attrVal;
+}/* End of XMLAttributeList_getAttributeValue */
+
+/**
+ * @brief Convenience function to add an 'XMLNode' to the 'children'
+ *        **Note:** See 'XMLNodeList_add' for implementation
+ *
+ * @param self - A reference to the struct you wish to add the node to
+ * @param node - The 'XMLNode' to add to 'self'
+ * @return success - A flag indicating the status of the subroutine
+ */
+static int XMLNode_add(struct XMLNode *self, struct XMLNode *node) {
+    return (NULL != self && NULL != self->children.add && NULL != node) ? self->children.add(&self->children, self, node) : FALSE;
+} /* End of XMLNode_add */
+
+/**
+ * @brief Obtains the associated 'XMLAttribute' given the 'key'
+ *        **Note:** See 'XMLAttributeList_getAttribute' for implementation
+ *
+ * @param self - A reference to the 'XMLNode' to search through
+ * @param key - The value to search for
+ * @return retAttr - The 'XMLAttribute' containing the associated 'key'
+ */
+static struct XMLAttribute* XMLNode_getAttribute(struct XMLNode *self, char *key) {
+    return (NULL != self && NULL != self->attributes.getAttribute && NULL != key) ? self->attributes.getAttribute(&self->attributes, key) : NULL;
+} /* End of XMLNode_getAttribute */
+
+/**
+ * @brief Obtains the associated 'value' given the 'key' from the 'XMLNode'
+ *        **Note:** See 'XMLAttributeList_getAttributeValue' for implementation
+ *
+ * @param self - A reference to the 'XMLNode' to search from
+ * @param key - A string containing the value to search for
+ * @return attrVal - The associated attribute value from the 'XMLNode'
+ */
+static char* XMLNode_getAttributeValue(struct XMLNode *self, char *key) {
+    return (NULL != self && NULL != self->attributes.getAttributeValue && NULL != key) ? self->attributes.getAttributeValue(&self->attributes, key) : NULL;
+} /* End of XMLNode_getAttributeValue */
+
+/**
+ * @brief Adds a 'XMLNode' to the 'XMLNodeList'
+ *
+ * @param self - A reference to the struct you wish to add the node to
+ * @param parent - A reference to the parent
+ * @param node - The 'XMLNode' to add to 'self'
+ * @return success - A flag indicating the status of the subroutine
+ */
+static int XMLNodeList_add(struct XMLNodeList *self, struct XMLNode *parent, struct XMLNode *node) {
+    int success = FALSE;
+
+    if(NULL != self) {
+        if(0 == self->size && NULL == self->data) {
+            self->data = calloc(1, sizeof(struct XMLNode*));
+
+            if(NULL != self->data)
+                self->heapSize = 1;
+        }
+
+        while(self->size >= self->heapSize) {
+            self->heapSize *= 2;
+            self->data = realloc(self->data, sizeof(struct XMLNode*) * self->heapSize);
+            memset(self->data + self->size, '\0', (sizeof(struct XMLNode*) * (self->heapSize - self->size)));
+        }
+
+        if(NULL != self->data) {
+            node->parent = parent;
+            self->data[self->size++] = node;
+            success = TRUE;
+        }
+    }
+
+    return success;
+} /* End of XMLNodeList_add */
+
+/**
+ * @brief Frees the given 'XMLNodeList'
+ *
+ * @param self - A reference to the struct you wish to free
+ */
+static void XMLNodeList_free(struct XMLNodeList *self) {
+    if(NULL != self)     {
+        size_t i = 0;
+        for(;i<self->size;++i)
+            self->data[i]->free(self->data[i]);
+
+        for(i=0;i<self->heapSize;++i) {
+            free(self->data[i]);
+            self->data[i] = NULL;
+        }
+
+        free(self->data);
+        self->data = NULL;
+
+        memset(self, '\0', sizeof(struct XMLNodeList));
+    }
+} /* End of XMLNodeList_free */
+
+/**
+ * @brief Frees the given 'XMLDocument'
+ *
+ * @param self - A reference to the struct you wish to free
+ */
+static void XMLDocument_free(struct XMLDocument *self) {
+    if(NULL != self) {
+        XMLNode_free(self->root);
+        free(self->root);
+        self->root = NULL;
+
+        free(self->version);
+        free(self->encoding);
+
+        self->version = self->encoding = NULL;
+        self->success = FALSE;
+    }
+} /* End of XMLDocument_free */
+
+/**
+ * @brief Searches the 'haystack' to see if it ends with the 'needle'
+ *
+ * @param haystack - The string to search through
+ * @param needle - The item to search for
+ * @return success - A flag indicating the status of the subroutine
+ */
+static int lxmlEndsWith(const char *haystack, const char *needle) {
+    int success = FALSE;
+
+    if(NULL != haystack && NULL != needle) {
+        size_t h_len = strlen(haystack),
+               n_len = strlen(needle);
+
+        if(h_len >= n_len) {
+            size_t i = 0;
+            for(; i < n_len; ++i)
+                if(haystack[h_len - n_len + i] != needle[i])
+                    break;
+
+            if(i == n_len)
+                success = TRUE;
+        }
+    }
+
+    return success;
+} /* End of lxmlEndsWith */
+
+static enum TagType lxmlParseAttrs(char *buf, size_t *i, char *lex, size_t *lexi, struct XMLNode *curr_node) {
+    enum TagType type = TAG_START;
+    struct XMLAttribute curr_attr = { 0, 0, XMLAttribute_free };
+
+    while ('>' != buf[*i]) {
+        lex[(*lexi)++] = buf[(*i)++];
+
+        /* Tag name */
+        if((' ' == buf[*i] || '>' == buf[*i+1]) && NULL == curr_node->tag) {
+            if('>' == buf[*i+1])
+                lex[(*lexi)++] = buf[*i];
+
+            lex[*lexi] = '\0';
+            /* FIXME: Can be NULL */
+            curr_node->tag = lxmlStrdup(lex);
+            *lexi = 0;
+            (*i)++;
+            continue;
+        }
+
+        /* Usually ignore spaces */
+        if(' ' == lex[*lexi-1]) {
+            (*lexi)--;
+        }
+
+        /* Attribute key */
+        if('=' == buf[*i]) {
+            lex[*lexi] = '\0';
+            curr_attr.key = lxmlStrdup(lex);
+            *lexi = 0;
+            continue;
+        }
+
+        /* Attribute value */
+        if('"' == buf[*i]) {
+            if(NULL == curr_attr.key) {
+                fprintf(stderr, "Value has no key\n");
+                type = TAG_START;
+                break;
+            }
+
+            *lexi = 0;
+            (*i)++;
+
+            while ('"' != buf[*i])
+                lex[(*lexi)++] = buf[(*i)++];
+            lex[*lexi] = '\0';
+            curr_attr.value = lxmlStrdup(lex);
+
+            curr_node->attributes.add(&curr_node->attributes, curr_attr);
+
+            curr_attr.free(&curr_attr);
+            *lexi = 0;
+            (*i)++;
+            continue;
+        }
+
+        /* Inline node */
+        if('/' == buf[*i - 1] && '>' == buf[*i]) {
+            lex[*lexi] = '\0';
+            if(NULL == curr_node->tag) /* FIXME: Can be NULL */
+                curr_node->tag = lxmlStrdup(lex);
+            (*i)++;
+            type = TAG_INLINE;
+            break;
+        }
+    }
+
+    curr_attr.free(&curr_attr);
+
+    return type;
+} /* End of lxmlParseAttrs */
+
+/**
+ * @brief Reads the entire file, pointed to by 'fp' into memory
+ *        and returns it as a 'calloc' piece of memory 'buf'
+ *
+ * @param fp - The file pointer to read
+ * @return buf - The buffer containing all of the files contents
+ */
+static char* lxmlReadXmlContentsIntoMemory(FILE *fp) {
+    char *buf = NULL;
+
+    if(NULL != fp) {
+        long fileSize = 0;
+        size_t bytesRead = 0;
+
+        fseek(fp, 0, SEEK_END);
+        fileSize = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+
+        buf = calloc(fileSize+1, sizeof(char));
+
+        if(NULL != buf) {
+            bytesRead = fread(buf, sizeof(char), fileSize, fp);
+
+            if(fileSize > 0 && bytesRead != (size_t) fileSize) {
+                free(buf);
+                buf = NULL;
+            }
+        }
+    }
+
+    return buf;
+} /* End of lxmlReadXmlContentsIntoMemory */
+
+static void node_out(FILE *file, struct XMLNode *node, int indent, int times) {
+    size_t i = 0, j = 0;
+
+    for(; i < node->children.size; ++i) {
+        struct XMLNode *child = node->children.data[i];
+
+        if(times > 0)
+            fprintf(file, "%*s", indent * times, " ");
+
+        fprintf(file, "<%s", child->tag);
+        for(j = 0; j < child->attributes.size; ++j) {
+            struct XMLAttribute *attr = child->attributes.attribute[j];
+
+            if(NULL != attr && NULL != attr->value && 0 != strcmp(attr->value, ""))
+                fprintf(file, " %s=\"%s\"", attr->key, attr->value);
+        }
+
+        if(0 == child->children.size && NULL == child->inner_text)
+            fprintf(file, " />\n");
+        else {
+            fprintf(file, ">");
+            if(0 == child->children.size)
+                fprintf(file, "%s</%s>\n", child->inner_text, child->tag);
+            else {
+                fprintf(file, "\n");
+                node_out(file, child, indent, times + 1);
+                if(times > 0)
+                    fprintf(file, "%*s", indent * times, " ");
+                fprintf(file, "</%s>\n", child->tag);
+            }
+        }
+    }
+} /* End of node_out */
+
+/**
+ * @brief Clones the string located at 'str'
+ *
+ * @param str - The string to duplicate
+ * @return strdup - The cloned string
+ */
+static char* lxmlStrdup(const char *str) {
+    char *strdup = NULL;
+
+    if(NULL != str) {
+        size_t strlength = strlen(str);
+
+        if(0 != strlength) {
+            strdup = calloc(strlength+1, sizeof(char));
+
+            if(NULL != strdup)
+                strcpy(strdup, str);
+        }
+    }
+
+    return strdup;
+} /* End of lxmlStrdup */
+
+/**
+ * @brief Parses the input buffer for the end of node
+ *
+ * @param buf - The buffer to parse
+ * @param bufOffset - The offet to begin parsing from
+ * @param lex - The buffer to place the lexime into
+ * @param lexi - The offset for the lexime buffer
+ *
+ * @return success - A Flag indicating the status of the subroutine
+ */
+static int lxmlParseEndOfNode(const char *buf, size_t *bufOffset, char *lex, size_t lexBufSize, size_t *lexi) {
+    int success = FALSE;
+
+    if(NULL != buf && NULL != bufOffset && NULL != lex && NULL != lexi) {
+        success = TRUE;
+
+        while(buf[*bufOffset] != '>') {
+            if('\0' != buf[*bufOffset] || *lexi >= lexBufSize)
+                lex[(*lexi)++] = buf[(*bufOffset)++];
+            else {
+                success = FALSE;
+                break;
+            }
+        }
+
+        lex[*lexi] = '\0';
+    }
+
+    return success;
+} /* End of lxmlParseEndOfNode*/
+
+/*******************Private End********************/
+#endif /* LITTLE_XML_H */
