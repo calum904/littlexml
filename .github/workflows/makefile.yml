@@ -1,0 +1,24 @@
+name: Makefile CI
+
+on:
+  push:
+    branches: [ "*" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: cd test && make clean && make && make pedantic
+
+    - name:  Run all unit tests
+      run:   ./test/testmain
+
+    - name: Run C89 Only
+      run: ./test/pedantic
