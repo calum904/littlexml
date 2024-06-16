@@ -1,3 +1,12 @@
+/**
+ * @file lxml.h
+ *
+ * @version 2.0
+ *
+ * @author Calum Judd Anderson
+ *
+ * @brief XML Parser Library
+ */
 #ifndef LITTLE_XML_H
 #define LITTLE_XML_H
 /******************Include Start*******************/
@@ -17,11 +26,18 @@
     #define FALSE 0
 #endif
 
-#define LEX_BUF_SIZE 256
+#define BUFF_HANDLE_SIZE 102
+#define LEX_BUFF_SIZE (2*BUFF_HANDLE_SIZE)
 
 /********************Define End********************/
 
 /********************Enum Start********************/
+
+enum XMLReadType {
+    READ_XML_UNSUPPORTED = -1,
+    READ_XML_FILE,
+    READ_XML_BUFF
+};
 
 enum TagType {
     TAG_UNSUPPORTED = -1,
@@ -32,6 +48,37 @@ enum TagType {
 /*********************Enum End*********************/
 
 /************Struct-Declaration Start**************/
+
+struct XMLReadFileHandle {
+    FILE *fp;
+    size_t fpInputSize, offset;
+
+    int (*open)(struct XMLReadFileHandle*, char*);
+    int (*close)(struct XMLReadFileHandle*);
+    int (*read)(struct XMLReadFileHandle*, char *, size_t);
+};
+
+struct XMLReadBuffHandle {
+    char *buffInput;
+    size_t buffInputSize, offset;
+
+    int (*open)(struct XMLReadBuffHandle*, char*);
+    int (*close)(struct XMLReadBuffHandle*);
+    int (*read)(struct XMLReadBuffHandle*, char*, size_t);
+};
+
+struct XMLLoadContext {
+    enum XMLReadType type;
+    char buff[BUFF_HANDLE_SIZE+1], *handle;
+    size_t buffSize, *inputSize, *offset;
+
+    struct XMLReadFileHandle readFile;
+    struct XMLReadBuffHandle readBuff;
+
+    int (*read)(struct XMLLoadContext*);
+    int(*open)(struct XMLLoadContext*);
+    int (*close)(struct XMLLoadContext*);
+};
 
 struct XMLAttribute {
     char *key, *value;
@@ -84,6 +131,33 @@ struct XMLDocument {
 
 /*****************Prototype Start******************/
 
+/* XML Read File Handle Prototype Start */
+
+struct XMLReadFileHandle XMLReadFileHandle_init();
+static int xmlReadFileHandle_open(struct XMLReadFileHandle *self, char *path);
+static int xmlReadFileHandle_close(struct XMLReadFileHandle *self);
+static int xmlReadFileHandle_read(struct XMLReadFileHandle *self, char *buff, size_t buffSize);
+
+/* XML Read File Handle Prototype End */
+
+/* XML Read Buff Handle Prototype Start */
+
+struct XMLReadBuffHandle XMLReadBuffHandle_init();
+static int xmlReadBuffHandle_open(struct XMLReadBuffHandle *self, char *buffInput);
+static int xmlReadBuffHandle_close(struct XMLReadBuffHandle *self);
+static int xmlReadBuffHandle_read(struct XMLReadBuffHandle *self, char *buff, size_t buffSize);
+
+/* XML Read Buff Handle Prototype End */
+
+/* XML Load Context Prototype Start */
+
+struct XMLLoadContext XMLLoadContext_init(enum XMLReadType type, char *handle);
+static int XMLLoadContext_open(struct XMLLoadContext *self);
+static int XMLLoadContext_close(struct XMLLoadContext *self);
+static int XMLLoadContext_read(struct XMLLoadContext *self);
+
+/* XML Load Context Prototype End */
+
 /* XML Attribute Functions Prototype Start */
 
 struct XMLAttribute* XMLAttribute_init(char *key, char *value);
@@ -126,8 +200,8 @@ static void XMLNodeList_free(struct XMLNodeList *self);
 
 /* XML Document Functions Prototype Start */
 
-struct XMLDocument XMLDocument_load(FILE *fp);
-int XMLDocument_write(struct XMLDocument *doc, const char *path, int indent);
+struct XMLDocument XMLDocument_load(struct XMLLoadContext ctx);
+int XMLDocument_write(struct XMLDocument doc, const char *path, int indent);
 
 static void XMLDocument_free(struct XMLDocument *doc);
 
@@ -146,6 +220,42 @@ static void node_out(FILE *file, struct XMLNode *node, int indent, int times);
 /******************Prototype End*******************/
 
 /*******************Public Start*******************/
+
+/**
+ * @brief Initialises an 'XMLReadFileHandle'
+ *
+ * @return handle - A newly constructed 'XMLReadFileHandle'
+ */
+struct XMLReadFileHandle XMLReadFileHandle_init() {
+    struct XMLReadFileHandle handle = { 0, 0, 0, xmlReadFileHandle_open, xmlReadFileHandle_close, xmlReadFileHandle_read };
+    return handle;
+} /* End of XMLReadFileHandle_init */
+
+/**
+ * @brief Initialises an 'XMLReadBuffHandle'
+ *
+ * @return handle - A newly constructed 'XMLReadBuffHandle'
+ */
+struct XMLReadBuffHandle XMLReadBuffHandle_init() {
+    struct XMLReadBuffHandle handle = { 0, 0, 0, xmlReadBuffHandle_open, xmlReadBuffHandle_close, xmlReadBuffHandle_read };
+    return handle;
+} /* End of XMLReadBuffHandle_init */
+
+struct XMLLoadContext XMLLoadContext_init(enum XMLReadType type, char *handle) {
+    struct XMLLoadContext ctx = { READ_XML_UNSUPPORTED, { 0 }, 0, BUFF_HANDLE_SIZE, 0, 0, { 0 }, { 0 }, 0, 0, 0 };
+
+    ctx.type = (READ_XML_FILE == type || READ_XML_BUFF == type) ? type : READ_XML_UNSUPPORTED;
+    ctx.handle = handle;
+
+    ctx.readFile = XMLReadFileHandle_init();
+    ctx.readBuff = XMLReadBuffHandle_init();
+
+    ctx.open = XMLLoadContext_open;
+    ctx.close = XMLLoadContext_close;
+    ctx.read = XMLLoadContext_read;
+
+    return ctx;
+} /* End of XMLLoadContext_init */
 
 /**
  * @brief Initialises an 'XMLAttribute'
@@ -187,12 +297,19 @@ struct XMLAttribute* XMLAttribute_init(char *key, char *value) {
 
 /**
  * @brief Initialises an 'XMLAttributeList'
+ *
+ * @return list - A newly constructed 'XMLAttributeList'
  */
 struct XMLAttributeList XMLAttributeList_init() {
     struct XMLAttributeList list = { 0, 0, 0, XMLAttributeList_add, XMLAttributeList_free, XMLAttributeList_getAttributeValue, XMLAttributeList_getAttribute };
     return list;
 } /* End of XMLAttributeList_init */
 
+/**
+ * @brief Initialises an 'XMLNodeList'
+ *
+ * @return list - A newly constructed 'XMLNodeList'
+ */
 struct XMLNodeList XMLNodeList_init() {
     struct XMLNodeList list = { 0, 0, 0, XMLNodeList_add, XMLNodeList_free };
     return list;
@@ -220,6 +337,11 @@ struct XMLNode* XMLNode_init() {
     return node;
 } /* End of XMLNode_init */
 
+/**
+ * @brief Free's a given 'XMLNode'
+ *
+ * @param node - The 'XMLNode' to free
+ */
 void XMLNode_free(struct XMLNode *node) {
     if(NULL != node) {
         if(node->tag) {
@@ -238,22 +360,43 @@ void XMLNode_free(struct XMLNode *node) {
     }
 } /* End of XMLNode_free */
 
-struct XMLDocument XMLDocument_load(FILE *fp) {
+/**
+ * @brief Serialises the XML document into an 'XMLDocument'
+ *
+ * @return doc - The 'XMLDocument' that the XML has been serilaised in to
+ */
+struct XMLDocument XMLDocument_load(struct XMLLoadContext ctx) {
     struct XMLDocument doc = { 0, 0, 0, 0, XMLDocument_free };
 
-    char *buf = lxmlReadXmlContentsIntoMemory(fp);
-
-    char lex[LEX_BUF_SIZE+1] = { 0 };
+    char lex[LEX_BUFF_SIZE+1] = { 0 };
     size_t i = 0, lexi = 0;
 
     struct XMLNode *curr_node = NULL, *tmp = NULL;
 
+    int success = ctx.open(&ctx);
+
+    success &= ctx.read(&ctx);
     doc.root = XMLNode_init(NULL);
     curr_node = doc.root;
 
-    while('\0' != buf[i]) {
+    while(TRUE == success) {
 
-        if('<' == buf[i]) {
+        if(i == ctx.buffSize) {
+            success = ctx.read(&ctx);
+            i = 0;
+
+            if(FALSE == success)
+                break;
+        } else if(i == ctx.buffSize || lexi == LEX_BUFF_SIZE) {
+            success = FALSE;
+            break;
+        }
+
+        /* Last Round & NULL Terminator */
+        if(*ctx.offset == *ctx.inputSize && '\0' == ctx.buff[i])
+            break;
+
+        if('<' == ctx.buff[i]) {
             lex[lexi] = '\0';
 
             /* Inner text */
@@ -270,10 +413,10 @@ struct XMLDocument XMLDocument_load(FILE *fp) {
             }
 
             /* End of node */
-            if('/' == buf[i + 1]) {
+            if('/' == ctx.buff[i + 1]) {
                 i += 2;
                 
-                doc.success = lxmlParseEndOfNode(buf, &i, lex, LEX_BUF_SIZE, &lexi);
+                success = lxmlParseEndOfNode(ctx.buff, &i, lex, BUFF_HANDLE_SIZE, &lexi);
 
                 if(NULL == curr_node) {
                     fprintf(stderr, "Already at the root\n");
@@ -291,16 +434,16 @@ struct XMLDocument XMLDocument_load(FILE *fp) {
             }
 
             /* Special nodes */
-            if('!' == buf[i + 1]) {
-                while (' ' != buf[i]  && '>' != buf[i])
-                    lex[lexi++] = buf[i++];
+            if('!' == ctx.buff[i + 1]) {
+                while (' ' != ctx.buff[i]  && '>' != ctx.buff[i])
+                    lex[lexi++] = ctx.buff[i++];
                 lex[lexi] = '\0';
 
                 /* Comments */
                 if(0 == strcmp(lex, "<!--")) {
                     lex[lexi] = '\0';
                     while (FALSE == lxmlEndsWith(lex, "-->")) {
-                        lex[lexi++] = buf[i++];
+                        lex[lexi++] = ctx.buff[i++];
                         lex[lexi] = '\0';
                     }
                     continue;
@@ -308,9 +451,9 @@ struct XMLDocument XMLDocument_load(FILE *fp) {
             }
 
             /* Declaration tags */
-            if('?' == buf[i + 1]) {
-                while (' ' != buf[i] && '>' != buf[i])
-                    lex[lexi++] = buf[i++];
+            if('?' == ctx.buff[i + 1]) {
+                while (' ' != ctx.buff[i] && '>' != ctx.buff[i])
+                    lex[lexi++] = ctx.buff[i++];
                 lex[lexi] = '\0';
 
                 /* This is the XML declaration */
@@ -318,7 +461,7 @@ struct XMLDocument XMLDocument_load(FILE *fp) {
                     struct XMLNode *desc = XMLNode_init(NULL);
                     lexi = 0;
 
-                    lxmlParseAttrs(buf, &i, lex, &lexi, desc);
+                    lxmlParseAttrs(ctx.buff, &i, lex, &lexi, desc);
 
                     doc.version = desc->getAttributeValue(desc, "version");
                     doc.encoding = desc->getAttributeValue(desc, "encoding");
@@ -337,7 +480,7 @@ struct XMLDocument XMLDocument_load(FILE *fp) {
                 enum TagType type = TAG_UNSUPPORTED;
                 ++i;
                 /* Start tag */
-                type = lxmlParseAttrs(buf, &i, lex, &lexi, tmp);
+                type = lxmlParseAttrs(ctx.buff, &i, lex, &lexi, tmp);
                 curr_node->add(curr_node, tmp);
 
                 if(TAG_INLINE != type) {
@@ -355,23 +498,23 @@ struct XMLDocument XMLDocument_load(FILE *fp) {
                 ++i;
                 continue;
             } else {
-                /* FIXME: Error */
+                success = FALSE;
                 break;
             }
         } else {
-            lex[lexi++] = buf[i++];
+            lex[lexi++] = ctx.buff[i++];
         }
     }
 
-    if('\0' == buf[i])
-        doc.success = TRUE;
+    if(FALSE == success)
+        doc.free(&doc);
 
-    free(buf);
+    doc.success = success;
 
     return doc;
 } /* End of XMLDocument_load */
 
-int XMLDocument_write(struct XMLDocument *doc, const char *path, int indent) {
+int XMLDocument_write(struct XMLDocument doc, const char *path, int indent) {
     FILE *file = fopen(path, "w");
     if(!file) {
         fprintf(stderr, "Could not open file '%s'\n", path);
@@ -380,10 +523,10 @@ int XMLDocument_write(struct XMLDocument *doc, const char *path, int indent) {
 
     fprintf(
         file, "<?xml version=\"%s\" encoding=\"%s\" ?>\n",
-        (doc->version) ? doc->version : "1.0",
-        (doc->encoding) ? doc->encoding : "UTF-8"
+        (doc.version) ? doc.version : "1.0",
+        (doc.encoding) ? doc.encoding : "UTF-8"
     );
-    node_out(file, doc->root, indent, 0);
+    node_out(file, doc.root, indent, 0);
     fclose(file);
 
     return TRUE;
@@ -392,6 +535,212 @@ int XMLDocument_write(struct XMLDocument *doc, const char *path, int indent) {
 /********************Public End********************/
 
 /******************Private Start*******************/
+
+/**
+ * @brief Closes the file handle pointed to by 'self'
+ *
+ * @param self - The XMLReadFileHandle
+ * @return success - A flag indicating the status of the subroutine
+ */
+static int xmlReadFileHandle_close(struct XMLReadFileHandle *self) {
+    int success = FALSE;
+
+    if(NULL != self) {
+        if(NULL != self->fp) {
+            int closeStatus = fclose(self->fp);
+
+            if(0 == closeStatus)
+                success = TRUE;
+            self->fp = NULL;
+        } else
+            success = TRUE;
+    }
+
+    return success;
+} /* End of xmlReadFileHandle_close */
+
+/**
+ * @brief Opens a file handle given 'path' and assigns it to 'self'
+ *
+ * @param self - The XMLReadFileHandle
+ * @param path - The location to open
+ * @return success - A flag indicating the status of the subroutine
+ */
+static int xmlReadFileHandle_open(struct XMLReadFileHandle *self, char *path) {
+    int success = FALSE;
+
+    if(NULL != self && NULL != path) {
+        self->fp = fopen(path, "rb");
+
+        if(NULL != self->fp)
+            success = TRUE;
+    }
+
+    return success;
+} /* End of xmlReadFileHandle_open */
+
+/**
+ * @brief Reads from the file handle pointed to by 'self' and places the result into 'buff'
+ *
+ * @param self - The XMLReadFileHandle
+ * @return success - A flag indicating the status of the subroutine
+ */
+static int xmlReadFileHandle_read(struct XMLReadFileHandle *self, char *buff, size_t buffSize) {
+    int success = FALSE;
+
+    if(NULL != self && NULL != self->fp) {
+        size_t bytesRead = fread(buff, sizeof(char), buffSize, self->fp);
+        success = (BUFF_HANDLE_SIZE == bytesRead) ? TRUE : (0 != feof(self->fp)) ? TRUE : FALSE;
+    }
+
+    return success;
+} /* End of xmlReadFileHandle_read */
+
+/**
+ * @brief Closes the buffer handle pointed to by 'self'
+ *
+ * @param self - The XMLReadBuffHandle
+ * @return success - A flag indicating the status of the subroutine
+ */
+static int xmlReadBuffHandle_close(struct XMLReadBuffHandle *self) {
+    int success = FALSE;
+
+    if(NULL != self) {
+        self->buffInput = NULL;
+        success = TRUE;
+    }
+
+    return success;
+} /* End of xmlReadBuffHandle_close */
+
+/**
+ * @brief Opens a file handle given 'path' and assigns it to 'self'
+ *
+ * @param self - The XMLReadBuffHandle
+ * @param path - The location to open
+ * @return success - A flag indicating the status of the subroutine
+ */
+static int xmlReadBuffHandle_open(struct XMLReadBuffHandle *self, char *buffInput) {
+    int success = FALSE;
+
+    if(NULL != self && NULL != buffInput) {
+        self->buffInput = buffInput;
+        self->buffInputSize = strlen(buffInput);
+        self->offset = 0;
+        success = TRUE;
+    }
+
+    return success;
+} /* End of xmlReadBuffHandle_open */
+
+/**
+ * @brief Reads from the file handle pointed to by 'self' and places the result into 'buff'
+ *
+ * @param self - The XMLReadBuffHandle
+ * @return success - A flag indicating the status of the subroutine
+ */
+static int xmlReadBuffHandle_read(struct XMLReadBuffHandle *self, char *buff, size_t buffSize) {
+    int success = FALSE;
+
+    if(NULL != self && NULL != self->buffInput && NULL != buff && buffSize > 1) {
+        size_t leftToRead = self->buffInputSize - self->offset;
+        size_t readBytes = (leftToRead < buffSize) ? leftToRead : buffSize-1;
+        memset(buff, '\0', buffSize);
+        printf("Left to read: %lu %lu %lu\n", leftToRead, buffSize, readBytes);
+        /* TODO: Offsets */
+        memcpy(buff, self->buffInput, readBytes);
+        self->offset += readBytes;
+        success = TRUE;
+    }
+
+    return success;
+} /* End of xmlReadBuffHandle_read */
+
+/**
+ * @brief Opens the 'handle' using the appropriate method as described by 'self->type'
+ *
+ * @param self - A reference to the 'XMLLoadContext' to locate the appropriate routine from
+ * @param handle - The handle to 'open'
+ * @return success - A flag indicating the status of the subroutine
+ */
+static int XMLLoadContext_open(struct XMLLoadContext *self) {
+    int success = FALSE;
+
+    if(NULL != self) {
+        switch(self->type) {
+            case(READ_XML_FILE):
+            success = self->readFile.open(&self->readFile, self->handle);
+            self->offset = &self->readFile.offset;
+            self->inputSize = &self->readFile.fpInputSize;
+            break;
+
+            case(READ_XML_BUFF):
+            success = self->readBuff.open(&self->readBuff, self->handle);
+            self->offset = &self->readBuff.offset;
+            self->inputSize = &self->readBuff.buffInputSize;
+            break;
+
+            default:
+            break;
+        }
+    }
+
+    return success;
+} /* End of XMLLoadContext_open */
+
+/**
+ * @brief Closes the 'handle' using the appropriate method as described by 'self->type'
+ *
+ * @param self - A reference to the 'XMLLoadContext' to locate the appropriate routine from
+ * @return success - A flag indicating the status of the subroutine
+ */
+static int XMLLoadContext_close(struct XMLLoadContext *self) {
+    int success = FALSE;
+
+    if(NULL != self) {
+        switch(self->type) {
+            case(READ_XML_FILE):
+            success = self->readFile.close(&self->readFile);
+            break;
+
+            case(READ_XML_BUFF):
+            success = self->readBuff.close(&self->readBuff);
+            break;
+
+            default:
+            break;
+        }
+    }
+
+    return success;
+} /* End of XMLLoadContext_close */
+
+/**
+ * @brief Reads from the 'handle' using the appropriate method as described by 'self->type'
+ *
+ * @param self - A reference to the 'XMLLoadContext' to locate the appropriate routine from
+ * @return success - A flag indicating the status of the subroutine
+ */
+static int XMLLoadContext_read(struct XMLLoadContext *self) {
+    int success = FALSE;
+
+    if(NULL != self) {
+        switch(self->type) {
+            case(READ_XML_FILE):
+            success = self->readFile.read(&self->readFile, self->buff, BUFF_HANDLE_SIZE);
+            break;
+
+            case(READ_XML_BUFF):
+            success = self->readBuff.read(&self->readBuff, self->buff, BUFF_HANDLE_SIZE);
+            break;
+
+            default:
+            break;
+        }
+    }
+
+    return success;
+} /* End of XMLLoadContext_read */
 
 /**
  * @brief Frees the data on a given 'XMLAttribute'
