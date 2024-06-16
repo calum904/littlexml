@@ -81,75 +81,13 @@ static int lxmlTestEndsWithFailHaystackLargerThanNeedle();
 static int lxmlTestEndsWithFailNullHaystack();
 static int lxmlTestEndsWithFailNullNeedle();
 
+static int lxmlTestReadFileHandle();
+static int lxmlTestReadFileHandleInit();
+static int lxmlTestLoadContextInit();
+static int lxmlTestLoadContext();
+
 #ifdef LXML_HAVE_FMEMOPEN
-static int lxmlTestReadXmlContentsIntoMemory();
-static int lxmlTestReadXmlContentsIntoMemoryPass();
-static int lxmlTestReadXmlContentsIntoMemoryNullFp();
-
-static int lxmlTestXMLDocument_load();
-static int lxmlTestXmlDocumentLoadPass();
-
-static int lxmlTestReadXmlContentsIntoMemoryPass() {
-    char *testXml = TEST_XML_VALID_1, *buf = NULL;
-    FILE *fp = fmemopen(testXml, sizeof(TEST_XML_VALID_1), "r");
-
-    assert(NULL != fp);
-
-    buf = lxmlReadXmlContentsIntoMemory(fp);
-
-    assert(NULL != buf);
-    assert(0 == strcmp(buf, testXml));
-
-    fclose(fp);
-    fp = NULL;
-
-    free(buf);
-    buf = NULL;
-
-    return TRUE;
-} /* End of lxmlTestReadXmlContentsIntoMemoryPass */
-
-static int lxmlTestReadXmlContentsIntoMemoryNullFp() {
-    assert(NULL == lxmlReadXmlContentsIntoMemory(NULL));
-    return TRUE;
-} /* End of lxmlTestReadXmlContentsIntoMemoryNullFp */
-
-static int lxmlTestReadXmlContentsIntoMemory() {
-    int success = FALSE;
-
-    success = lxmlTestReadXmlContentsIntoMemoryPass();
-    success &= lxmlTestReadXmlContentsIntoMemoryNullFp();
-
-    printf("lxmlReadXmlContentsIntoMemory: %s\n", (TRUE == success) ? "Pass" : "Fail");
-
-    return success;
-} /* End of lxmlTestReadXmlContentsIntoMemory */
-
-static int lxmlTestXmlDocumentLoadPass() {
-    int success = FALSE;
-    char xmlDocument[TEST_XML_VALID_1_SIZE+1] = TEST_XML_VALID_1;
-    struct XMLDocument doc = { 0 };
-    FILE *fp = fmemopen(xmlDocument, TEST_XML_VALID_1_SIZE+1, "r");;
-
-    assert(NULL != fp);
-
-    doc = XMLDocument_load(fp);
-    success = doc.success;
-    assert(TRUE == success);
-
-    doc.free(&doc);
-    fclose(fp);
-    fp = NULL;
-
-    printf("lxmlTestXMLDocument_load: %s\n", (TRUE == success) ? "Pass" : "Fail");
-    return success;
-} /* End of lxmlTestXmlDocumentLoadPass */
-
-static int lxmlTestXMLDocument_load() {
-    int success = lxmlTestXmlDocumentLoadPass();
-    return success;
-} /* End of lxmlTestXMLDocument_load */
-
+#include "extratests.h"
 #endif /* LXML_HAVE_FMEMOPEN */
 
 /**
@@ -625,6 +563,74 @@ static int lxmlTestNodeList() {
     return success;
 } /* End of lxmlTestNodeList */
 
+static int lxmlTestReadFileHandleInit() {
+    struct XMLReadFileHandle handle = XMLReadFileHandle_init();
+
+    assert(NULL == handle.fp);
+
+    assert(NULL != handle.open);
+    assert(NULL != handle.close);
+    assert(NULL != handle.read);
+
+    return TRUE;
+} /* End of lxmlTestReadFileHandleInit */
+
+static int lxmlTestReadFileHandle() {
+    int success = lxmlTestReadFileHandleInit();
+
+    printf("lxmlTestReadFileHandle: %s\n", (TRUE == success) ? "Pass" : "Fail");
+
+    return success;
+} /* End of lxmlTestReadFileHandle */
+
+static int lxmlTestReadBuffHandleInit() {
+    struct XMLReadBuffHandle handle = XMLReadBuffHandle_init();
+
+    assert(NULL == handle.buffInput);
+
+    assert(NULL != handle.open);
+    assert(NULL != handle.close);
+    assert(NULL != handle.read);
+
+    return TRUE;
+} /* End of lxmlTestReadBuffHandleInit */
+
+static int lxmlTestReadBuffHandle() {
+    int success = lxmlTestReadBuffHandleInit();
+
+    printf("lxmlTestReadBuffHandle: %s\n", (TRUE == success) ? "Pass" : "Fail");
+
+    return success;
+} /* End of lxmlTestReadFileHandle */
+
+static int lxmlTestLoadContextInit() {
+    struct XMLLoadContext ctx = XMLLoadContext_init(READ_XML_UNSUPPORTED, NULL);
+
+    assert(READ_XML_UNSUPPORTED == ctx.type);
+
+    assert(NULL != ctx.readFile.open);
+    assert(NULL != ctx.readFile.close);
+    assert(NULL != ctx.readFile.read);
+
+    assert(NULL != ctx.readBuff.open);
+    assert(NULL != ctx.readBuff.close);
+    assert(NULL != ctx.readBuff.read);
+
+    assert(NULL != ctx.open);
+    assert(NULL != ctx.close);
+    assert(NULL != ctx.read);
+
+    return TRUE;
+} /* End of lxmlTestLoadContextInit */
+
+static int lxmlTestLoadContext() {
+    int success = lxmlTestLoadContextInit();
+
+    printf("lxmlTestLoadContext: %s\n", (TRUE == success) ? "Pass" : "Fail");
+
+    return success;
+} /* End of lxmlTestLoadContext */
+
 int main() {
     int success = FALSE;
 
@@ -636,6 +642,10 @@ int main() {
 
     success &= lxmlTestParseAttributes();
     success &= lxmlTestEndsWith();
+
+    success &= lxmlTestReadFileHandle();
+    success &= lxmlTestReadBuffHandle();
+    success &= lxmlTestLoadContext();
 
     #ifdef LXML_HAVE_FMEMOPEN
     success &= lxmlTestReadXmlContentsIntoMemory();

@@ -22,5 +22,5 @@ pedantic:
 	$(CC) -o $@ $(CFLAGS) -std=c89 --pedantic $(OBJS) $(INC) $(LIBS)
 
 clean:
-	$(RM) $(PROGRAM)
+	$(RM) $(PROGRAM) pedantic
 
