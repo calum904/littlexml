@@ -45,6 +45,11 @@
 
 #define TEST_XML_VALID_1_SIZE (sizeof(TEST_XML_VALID_1)-1)
 
+#define TXML_TEST_XML_NODE_TREE_CHILDREN_SIZE 12
+#define TEST_EXAMPLE_XML_NODE_TREE_STRING "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n<top>\n  <foo />\n  <bar />\n  <baz />\n</top>\n<middle>\n  <child />\n  <child />\n  <child />\n</middle>\n<bottom>\n  <nest>\n    <nest>\n      <nest />\n    </nest>\n  </nest>\n</bottom>\n"
+
+static struct XMLNode* tlxmlCreateTestXMLNodeTree();
+
 static int lxmlTestPopulateAttributeListWith(struct XMLAttributeList *list, struct XMLAttribute **attrs, size_t attrsSize);
 static int lxmlTestPopulateXmlAttributeListWithDefaultAttributes(struct XMLAttributeList *list);
 static int lxmlTestGetDefaultAttributeValuesFromAttributeList(struct XMLAttributeList list);
@@ -67,6 +72,8 @@ static int lxmlTestParseAttributesPass();
 static int lxmlTestNode();
 static int lxmlTestNodeInit();
 static int lxmlTestNodeAdd();
+static int lxmlTestNodeGetImmediateElementByTagName();
+static int lxmlTestNodeGetImmediateElementByTagNameNodeNotFound();
 
 static int lxmlTestNodeListInit();
 static int lxmlTestNodeListAdd();
@@ -82,12 +89,52 @@ static int lxmlTestEndsWithFailNullHaystack();
 static int lxmlTestEndsWithFailNullNeedle();
 
 #ifdef LXML_HAVE_FMEMOPEN
+static int tlxmlCompareXmlNodeListAgainstString(struct XMLNode *tree, char *str);
+
 static int lxmlTestReadXmlContentsIntoMemory();
 static int lxmlTestReadXmlContentsIntoMemoryPass();
 static int lxmlTestReadXmlContentsIntoMemoryNullFp();
 
 static int lxmlTestXMLDocument_load();
 static int lxmlTestXmlDocumentLoadPass();
+
+/**
+ * @brief Compares an 'XMLNode' to a given string
+ *
+ * @param  tree    - The 'XMLNode' to compare
+ * @param  str     - The serialised string to compare it against
+ * @return success - A flag indicating the status of the subroutine
+ */
+static int tlxmlCompareXmlNodeListAgainstString(struct XMLNode *tree, char *str) {
+    int success = FALSE;
+
+    if (NULL != tree && NULL != str) {
+        size_t strLen = strlen(str);
+
+        unsigned char *buf = calloc(strLen + 3, sizeof(char));
+
+        if (NULL != buf) {
+            FILE *fp = fmemopen(buf, strLen + 2, "w");
+
+            if (NULL != fp) {
+                struct XMLDocument doc = { tree, "1.0", "UTF-8", TRUE, XMLDocument_free };
+
+                success = XMLDocument_write(&doc, fp, 2);
+                fclose(fp);
+                fp = NULL;
+               
+                if (TRUE == success)
+                    success = (0 == strcmp(str, (char*) buf)) ? TRUE : FALSE;
+
+            }
+
+            free(buf);
+            buf = NULL;
+        }
+    }
+
+    return success;
+} /* End of tlxmlCompareXmlNodeListAgainstString */
 
 static int lxmlTestReadXmlContentsIntoMemoryPass() {
     char *testXml = TEST_XML_VALID_1, *buf = NULL;
@@ -153,6 +200,87 @@ static int lxmlTestXMLDocument_load() {
 #endif /* LXML_HAVE_FMEMOPEN */
 
 /**
+ * @brief Helper function for unit tests to create an 'XMLNode' with following XML structure
+ *
+ * <root>
+ *    <top>
+ *      <foo/>
+ *      <bar/>
+ *      <baz/>
+ *    </top>
+ *    <middle>
+ *       <child/>
+ *       <child/>
+ *       <child/>
+ *    </middle>
+ *    <bottom>
+ *       <nest>
+ *          <nest>
+ *             <nest/>
+ *          </nest>
+ *       </nest>
+ *    </bottom>
+ * </root>
+ *
+ * @return tree - The 'XMLNode' of the above tree structure
+ */
+static struct XMLNode* tlxmlCreateTestXMLNodeTree() {
+    struct XMLNode *tree = XMLNode_init(),
+                   *tmp  = XMLNode_init(),
+                   *tmp2 = XMLNode_init();
+    size_t i = 0;
+
+    assert(NULL != tree && NULL != tmp && NULL != tmp2);
+    tree->add(tree, tmp);
+    tmp->tag  = lxmlStrdup("top");
+    tmp2->tag = lxmlStrdup("foo");
+
+    tmp->add(tmp, tmp2);
+
+    tmp2 = XMLNode_init();
+    tmp2->tag = lxmlStrdup("bar");
+    tmp->add(tmp, tmp2);
+
+    tmp2 = XMLNode_init();
+    tmp2->tag = lxmlStrdup("baz");
+    tmp->add(tmp, tmp2);
+
+    tmp = XMLNode_init();
+    tree->add(tree, tmp);
+    tmp->tag = lxmlStrdup("middle");
+
+    tmp2 = XMLNode_init();
+    tmp2->tag = lxmlStrdup("child");
+    tmp->add(tmp, tmp2);
+
+    tmp2 = XMLNode_init();
+    tmp2->tag = lxmlStrdup("child");
+    tmp->add(tmp, tmp2);
+
+    tmp2 = XMLNode_init();
+    tmp2->tag = lxmlStrdup("child");
+    tmp->add(tmp, tmp2);
+
+    tmp = XMLNode_init();
+    tree->add(tree, tmp);
+    tmp->tag = lxmlStrdup("bottom");
+
+    for (i=0;i<3;++i) {
+        tmp2 = XMLNode_init();
+        tmp2->tag = lxmlStrdup("nest");
+        tmp->add(tmp, tmp2);
+        tmp = tmp2;
+    }
+
+#ifdef LXML_HAVE_FMEMOPEN
+    /* Check to see that it serialised correctly */
+    assert(TRUE == tlxmlCompareXmlNodeListAgainstString(tree, TEST_EXAMPLE_XML_NODE_TREE_STRING));
+#endif
+
+    return tree;
+} /* End of tlxmlCreateTestXMLNodeTree */
+
+/**
  * @brief Helper function to add an array of 'attr' pointers to 'list'
  *
  * @param list - The list to add the 'attrs' to
@@ -163,10 +291,10 @@ static int lxmlTestXMLDocument_load() {
 static int lxmlTestPopulateAttributeListWith(struct XMLAttributeList *list, struct XMLAttribute **attrs, size_t attrsSize) {
     int success = FALSE;
 
-    if(NULL != list && NULL != attrs) {
+    if (NULL != list && NULL != attrs) {
         size_t i = 0;
        
-        for(i=0;i<attrsSize;++i) {
+        for (i=0;i<attrsSize;++i) {
             assert(NULL != attrs[i]);
             success = list->add(list, *attrs[i]);
 
@@ -251,10 +379,10 @@ static int lxmlTestGetDefaultAttributesFromAttributeList(struct XMLAttributeList
  * @param attrsSize - The size of the array
  */
 static void lxmlTestFreeAttrs(struct XMLAttribute **attrs, size_t attrsSize) {
-    if(NULL != attrs) {
+    if (NULL != attrs) {
         size_t i = 0;
-        for(;i<attrsSize;++i) {
-            if(NULL != attrs[i]) {
+        for (;i<attrsSize;++i) {
+            if (NULL != attrs[i]) {
                 attrs[i]->free(attrs[i]);
                 free(attrs[i]);
                 attrs[i] = NULL;
@@ -535,6 +663,43 @@ static int lxmlTestNodeAdd() {
     return TRUE;
 } /* End of lxmlTestNodeAdd */
 
+static int lxmlTestNodeGetImmediateElementByTagName() {
+    struct XMLNode *tree = tlxmlCreateTestXMLNodeTree();
+
+    assert(NULL != tree);
+
+    {
+        struct XMLNode *topNode    = tree->getImmediateElementByTagName(tree, "top"),
+                       *middleNode = tree->getImmediateElementByTagName(tree, "middle"),
+                       *bottomNode = tree->getImmediateElementByTagName(tree, "bottom");
+
+        assert(NULL != topNode && NULL != middleNode && NULL != bottomNode);
+
+        assert(0 == strcmp("top",    topNode->tag));
+        assert(0 == strcmp("middle", middleNode->tag));
+        assert(0 == strcmp("bottom", bottomNode->tag));
+    }
+
+    tree->free(tree);
+    free(tree);
+    tree = NULL;
+
+    return TRUE;
+} /* End of lxmlTestNodeGetImmediateElementByTagName */
+
+static int lxmlTestNodeGetImmediateElementByTagNameNodeNotFound() {
+    struct XMLNode *tree = tlxmlCreateTestXMLNodeTree();
+
+    assert(NULL != tree);
+    assert(NULL == tree->getImmediateElementByTagName(tree, "upper"));
+
+    tree->free(tree);
+    free(tree);
+    tree = NULL;
+
+    return TRUE;
+} /* End of lxmlTestNodeGetImmediateElementByTagNameNodeNotFound */
+
 static int lxmlTestNodeGetAttributeValues() {
     int success = FALSE;
 
@@ -579,6 +744,9 @@ static int lxmlTestNode() {
     success &= lxmlTestNodeAdd();
     success &= lxmlTestNodeGetAttributeValues();
     success &= lxmlTestNodeGetAttributes();
+    success &= lxmlTestNodeGetImmediateElementByTagName();
+
+    success &= lxmlTestNodeGetImmediateElementByTagNameNodeNotFound();
 
     printf("lxmlTestNode: %s\n", (TRUE == success) ? "Pass" : "Fail");
 
