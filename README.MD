@@ -13,28 +13,38 @@ int main()
 {
     FILE *fp = fopen("test.xml", "r");
 
-    if(NULL != fp) {
+    if (NULL != fp) {
         struct XMLDocument doc = XMLDocument_load(fp);
 
-        if(TRUE == doc.success) {
+        if (TRUE == doc.success) {
             printf("Version %s encoding %s\n", doc.version, doc.encoding);
 
-            printf("Root: %p %s %d\n", doc.root, doc.root->tag, doc.root->children.size);
-            if(NULL != doc.root) {
+            printf("Root: %p %s %ld\n", doc.root, doc.root->tag, doc.root->children.size);
+            if (NULL != doc.root) {
                 struct XMLAttribute *attr = doc.root->getAttribute(doc.root, "name");
                 char *attrVal = doc.root->getAttributeValue(doc.root, "name");
 
-                if(NULL != attr)
+                if (NULL != attr)
                     printf("Got 'name' attribute %s %s\n", attr->key, attr->value);
 
-                if(NULL != attrVal) {
+                if (NULL != attrVal) {
                     printf("Got 'name' %s\n", attrVal);
                     free(attrVal);
                     attrVal = NULL;
                 }
             }
 
-            XMLDocument_write(&doc, "out.xml", 4);
+            {
+                FILE *out = fopen("out.xml", "w");
+
+                if (NULL != out) {
+                    XMLDocument_write(&doc, out, 4);
+                    fclose(out);
+                    out = NULL;
+                } else
+                    printf("Error opening output\n");
+            }
+
             doc.free(&doc);
         } else
             printf("Error reading XML\n");
