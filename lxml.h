@@ -19,6 +19,9 @@
 
 #define LEX_BUF_SIZE 256
 
+#define IGNORE_WHITESPACE_MAP " \t\n\r\v\f"
+#define IGNORE_WHITESPACE_MAP_SIZE 6
+
 /********************Define End********************/
 
 /********************Enum Start********************/
@@ -517,7 +520,7 @@ static struct XMLAttribute* XMLAttributeList_getAttribute(struct XMLAttributeLis
     }
 
     return retAttr;
-} /* End of XMLNode_getAttribute */
+} /* End of XMLAttributeList_getAttribute */
 
 /**
  * @brief Obtains the associated 'value' given the 'key' from the 'XMLAttributeList'
@@ -715,6 +718,8 @@ static int lxmlEndsWith(const char *haystack, const char *needle) {
 static enum TagType lxmlParseAttrs(char *buf, size_t *i, char *lex, size_t *lexi, struct XMLNode *curr_node) {
     enum TagType type = TAG_START;
     struct XMLAttribute curr_attr = { 0, 0, XMLAttribute_free };
+    char *ignoreWhiteSpaceMap = IGNORE_WHITESPACE_MAP;
+    size_t j = 0;
 
     while ('>' != buf[*i]) {
         lex[(*lexi)++] = buf[(*i)++];
@@ -733,8 +738,11 @@ static enum TagType lxmlParseAttrs(char *buf, size_t *i, char *lex, size_t *lexi
         }
 
         /* Usually ignore spaces */
-        if (' ' == lex[*lexi-1]) {
-            (*lexi)--;
+        for (j = 0; j < IGNORE_WHITESPACE_MAP_SIZE; ++j) {
+            if (ignoreWhiteSpaceMap[j] == lex[*lexi-1]) {
+                (*lexi)--;
+                break;
+            }
         }
 
         /* Attribute key */
