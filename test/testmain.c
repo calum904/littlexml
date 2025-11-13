@@ -77,6 +77,7 @@ static int lxmlTestNodeGetImmediateElementByTagNameNodeNotFound();
 
 static int lxmlTestNodeListInit();
 static int lxmlTestNodeListAdd();
+static int lxmlTestNodeListCreateAndAppend();
 static int lxmlTestNodeList();
 
 static int lxmlTestEndsWith();
@@ -646,22 +647,34 @@ static int lxmlTestNodeInit() {
 } /* End of lxmlTestNodeInit */
 
 static int lxmlTestNodeAdd() {
-    struct XMLNode *node  = XMLNode_init(),
+    struct XMLNode node   = XMLNodeInitStack(),
                    *child = XMLNode_init();
 
-    assert(NULL != node && NULL != child);
+    assert(NULL != child);
 
-    node->add(node, child);
+    node.add(&node, child);
 
-    assert(NULL == node->parent);
-    assert(node == child->parent);
+    assert(NULL == node.parent);
+    assert(&node == child->parent);
 
-    node->free(node);
-    free(node);
-    node = child = NULL;
+    node.free(&node);
+    child = NULL;
     
     return TRUE;
 } /* End of lxmlTestNodeAdd */
+
+static int lxmlTestNodeCreateAndAppend() {
+    struct XMLNode node  = XMLNodeInitStack();
+    struct XMLNode *child = node.createAndAppend(&node);
+
+    assert(NULL != child);
+    assert(1 == node.children.size && 1 == node.children.heapSize);
+    assert(child == node.children.data[0]);
+
+    node.free(&node);
+
+    return TRUE;
+} /* End of lxmlTestNodeCreateAndAppend */
 
 static int lxmlTestNodeGetImmediateElementByTagName() {
     struct XMLNode *tree = tlxmlCreateTestXMLNodeTree();
@@ -742,6 +755,7 @@ static int lxmlTestNode() {
     int success = lxmlTestNodeInit();
 
     success &= lxmlTestNodeAdd();
+    success &= lxmlTestNodeCreateAndAppend();
     success &= lxmlTestNodeGetAttributeValues();
     success &= lxmlTestNodeGetAttributes();
     success &= lxmlTestNodeGetImmediateElementByTagName();
@@ -784,9 +798,26 @@ static int lxmlTestNodeListAdd() {
     return success;
 } /* End of lxmlTestNodeListAdd */
 
+static int lxmlTestNodeListCreateAndAppend() {
+    struct XMLNodeList list = XMLNodeList_init();
+    struct XMLNode *child = list.createAndAppend(&list);
+
+    assert(NULL != child);
+
+    assert(1 == list.size && 1 == list.heapSize);
+    assert(list.data[0] == child);
+
+    list.free(&list);
+    child = NULL;
+
+    return TRUE;
+} /* End of lxmlTestNodeListCreateAndAppend */
+
 static int lxmlTestNodeList() {
     int success = lxmlTestNodeListInit();
+
     success &= lxmlTestNodeListAdd();
+    success &= lxmlTestNodeListCreateAndAppend();
 
     printf("lxmlTestNodeList: %s\n", (TRUE == success) ? "Pass" : "Fail");
 

@@ -58,6 +58,7 @@ struct XMLNodeList {
     struct XMLNode **data;
 
     int (*add)(struct XMLNodeList*, struct XMLNode*, struct XMLNode*);
+    struct XMLNode* (*createAndAppend)(struct XMLNodeList*);
     void (*free)(struct XMLNodeList*);
 };
 
@@ -69,6 +70,7 @@ struct XMLNode {
     struct XMLNodeList children;
 
     int (*add)(struct XMLNode*, struct XMLNode*);
+    struct XMLNode* (*createAndAppend)(struct XMLNode*);
     void (*free)(struct XMLNode*);
 
     char* (*getAttributeValue)(struct XMLNode*, char*);
@@ -113,10 +115,12 @@ static char* XMLAttributeList_getAttributeValue(struct XMLAttributeList *self, c
 struct XMLNode* XMLNode_init();
 
 static int XMLNode_add(struct XMLNode *self, struct XMLNode *node);
+static struct XMLNode* XMLNode_createAndAppend(struct XMLNode *self);
 static void XMLNode_free(struct XMLNode *self);
 static struct XMLAttribute* XMLNode_getAttribute(struct XMLNode *node, char *key);
 static char* XMLNode_getAttributeValue(struct XMLNode *node, char *key);
 static struct XMLNode* XMLNode_getImmediateElementByTagName(struct XMLNode *node, char *tagName);
+static struct XMLNode XMLNodeInitStack();
 
 /* XML Node Functions Prototype End */
 
@@ -125,6 +129,7 @@ static struct XMLNode* XMLNode_getImmediateElementByTagName(struct XMLNode *node
 struct XMLNodeList XMLNodeList_init();
 
 static int XMLNodeList_add(struct XMLNodeList *self, struct XMLNode *parent, struct XMLNode *node);
+static struct XMLNode* XMLNodeList_createAndAppend(struct XMLNodeList *self);
 static void XMLNodeList_free(struct XMLNodeList *self);
 
 /* XML Node List Functions Prototype End */
@@ -200,7 +205,7 @@ struct XMLAttributeList XMLAttributeList_init() {
 } /* End of XMLAttributeList_init */
 
 struct XMLNodeList XMLNodeList_init() {
-    struct XMLNodeList list = { 0, 0, 0, XMLNodeList_add, XMLNodeList_free };
+    struct XMLNodeList list = { 0, 0, 0, XMLNodeList_add, XMLNodeList_createAndAppend, XMLNodeList_free };
     return list;
 } /* End of XMLNodeList_init */
 
@@ -212,17 +217,8 @@ struct XMLNodeList XMLNodeList_init() {
 struct XMLNode* XMLNode_init() {
     struct XMLNode *node = calloc(1, sizeof(struct XMLNode));
 
-    if (NULL != node) {
-        node->attributes = XMLAttributeList_init();
-        node->children = XMLNodeList_init();
-
-        node->add = XMLNode_add;
-        node->free = XMLNode_free;
-
-        node->getAttribute = XMLNode_getAttribute;
-        node->getAttributeValue = XMLNode_getAttributeValue;
-        node->getImmediateElementByTagName = XMLNode_getImmediateElementByTagName;
-    }
+    if (NULL != node)
+        *node = XMLNodeInitStack();
 
     return node;
 } /* End of XMLNode_init */
@@ -338,14 +334,13 @@ struct XMLDocument XMLDocument_load(FILE *fp) {
             }
 
             /* Set current node */
-            tmp = XMLNode_init();
+            tmp = curr_node->createAndAppend(curr_node);
 
             if (NULL != tmp) {
                 enum TagType type = TAG_UNSUPPORTED;
                 ++i;
                 /* Start tag */
                 type = lxmlParseAttrs(buf, &i, lex, &lexi, tmp);
-                curr_node->add(curr_node, tmp);
 
                 if (TAG_INLINE != type) {
                     /* Set tag name if none */
@@ -562,6 +557,33 @@ static int XMLNode_add(struct XMLNode *self, struct XMLNode *node) {
 } /* End of XMLNode_add */
 
 /**
+ * @brief Convenience function to add and append 'XMLNode' to the 'children'
+ *        **Note:** See 'XMLNode_add' for implementation
+ *
+ * @param  self - A reference to the struct you wish to add the node to
+ * @return node - The new node that's been appended to the XMLNodeList
+ */
+static struct XMLNode* XMLNode_createAndAppend(struct XMLNode *self) {
+    struct XMLNode *node = NULL;
+
+    if (NULL != self) {
+        node = XMLNode_init();
+
+        if (NULL != node) {
+            int success = self->add(self, node);
+
+            if (FALSE == success) {
+                node->free(node);
+                free(node);
+                node = NULL;
+            }
+        }
+    }
+
+    return node;
+} /* End of XMLNode_createAndAppend */
+
+/**
  * @brief Obtains the associated 'XMLAttribute' given the 'key'
  *        **Note:** See 'XMLAttributeList_getAttribute' for implementation
  *
@@ -611,6 +633,20 @@ static struct XMLNode* XMLNode_getImmediateElementByTagName(struct XMLNode *self
 } /* End of XMLNode_getImmediateElementByTagName */
 
 /**
+ * @brief Creates a stack allocated 'XMLNode', initialises it then returns it.
+ *
+ * @return node - A stack allocated and initialised XMLNode
+ */
+static struct XMLNode XMLNodeInitStack() {
+    struct XMLNode node = { NULL, NULL, NULL, { 0 }, { 0 }, XMLNode_add, XMLNode_createAndAppend, XMLNode_free, XMLNode_getAttributeValue, XMLNode_getAttribute, XMLNode_getImmediateElementByTagName };
+
+    node.attributes = XMLAttributeList_init();
+    node.children = XMLNodeList_init();
+
+    return node;
+} /* End of XMLNodeInitStack */
+
+/**
  * @brief Adds a 'XMLNode' to the 'XMLNodeList'
  *
  * @param self - A reference to the struct you wish to add the node to
@@ -644,6 +680,32 @@ static int XMLNodeList_add(struct XMLNodeList *self, struct XMLNode *parent, str
 
     return success;
 } /* End of XMLNodeList_add */
+
+/**
+ * @brief Adds a 'XMLNode' to the 'XMLNodeList'
+ *
+ * @param  self - A reference to the struct you wish to add the node to
+ * @return node - The new node that's been appended to the XMLNodeList
+ */
+static struct XMLNode* XMLNodeList_createAndAppend(struct XMLNodeList *self) {
+    struct XMLNode *node = NULL;
+
+    if (NULL != self) {
+        node = XMLNode_init();
+
+        if (NULL != node) {
+            int success = self->add(self, NULL, node);
+
+            if (FALSE == success) {
+                node->free(node);
+                free(node);
+                node = NULL;
+            }
+        }
+    }
+
+    return node;
+} /* End of XMLNodeList_createAndAppend */
 
 /**
  * @brief Frees the given 'XMLNodeList'
