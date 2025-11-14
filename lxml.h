@@ -152,7 +152,7 @@ static enum TagType lxmlParseAttrs(char *buf, size_t *i, char *lex, size_t *lexi
 static int lxmlEndsWith(const char *haystack, const char *needle);
 static int lxmlParseEndOfNode(const char *buf, size_t *bufOffset, char *lex, size_t lexBufSize, size_t *lexi);
 
-static void node_out(FILE *file, struct XMLNode *node, int indent, int times);
+static void node_out(FILE *file, struct XMLNode *node, const char * const indentation, int indent, int times);
 
 /******************Prototype End*******************/
 
@@ -246,129 +246,132 @@ struct XMLDocument XMLDocument_load(FILE *fp) {
 
     char *buf = lxmlReadXmlContentsIntoMemory(fp);
 
-    char lex[LEX_BUF_SIZE+1] = { 0 };
-    size_t i = 0, lexi = 0;
+    if (NULL != buf) {
+        char lex[LEX_BUF_SIZE+1] = { 0 };
+        size_t i = 0, lexi = 0;
 
-    struct XMLNode *curr_node = NULL, *tmp = NULL;
+        struct XMLNode *curr_node = NULL, *tmp = NULL;
 
-    doc.root = XMLNode_init(NULL);
-    curr_node = doc.root;
+        doc.root = XMLNode_init(NULL);
+        curr_node = doc.root;
 
-    while ('\0' != buf[i]) {
+        while ('\0' != buf[i]) {
 
-        if ('<' == buf[i]) {
-            lex[lexi] = '\0';
-
-            /* Inner text */
-            if (lexi > 0) {
-                if (NULL == curr_node) {
-                    fprintf(stderr, "Text outside of document\n");
-                    break;
-                }
-
-                if (NULL == curr_node->inner_text)
-                    curr_node->inner_text = lxmlStrdup(lex);
-
-                lexi = 0;
-            }
-
-            /* End of node */
-            if ('/' == buf[i + 1]) {
-                i += 2;
-                
-                doc.success = lxmlParseEndOfNode(buf, &i, lex, LEX_BUF_SIZE, &lexi);
-
-                if (NULL == curr_node) {
-                    fprintf(stderr, "Already at the root\n");
-                    break;
-                }
-
-                if (0 != strcmp(NULL == curr_node->tag ? "" : curr_node->tag, lex)) {
-                    fprintf(stderr, "Mismatched tags (%s != %s)\n", curr_node->tag, lex);
-                    break;
-                }
-
-                curr_node = curr_node->parent;
-                i++;
-                continue;
-            }
-
-            /* Special nodes */
-            if ('!' == buf[i + 1]) {
-                while (' ' != buf[i]  && '>' != buf[i])
-                    lex[lexi++] = buf[i++];
+            if ('<' == buf[i]) {
                 lex[lexi] = '\0';
 
-                /* Comments */
-                if (0 == strcmp(lex, "<!--")) {
-                    lex[lexi] = '\0';
-                    while (FALSE == lxmlEndsWith(lex, "-->")) {
-                        lex[lexi++] = buf[i++];
-                        lex[lexi] = '\0';
+                /* Inner text */
+                if (lexi > 0) {
+                    if (NULL == curr_node) {
+                        fprintf(stderr, "Text outside of document\n");
+                        break;
                     }
-                    continue;
-                }
-            }
 
-            /* Declaration tags */
-            if ('?' == buf[i + 1]) {
-                while (' ' != buf[i] && '>' != buf[i])
-                    lex[lexi++] = buf[i++];
-                lex[lexi] = '\0';
+                    if (NULL == curr_node->inner_text)
+                        curr_node->inner_text = lxmlStrdup(lex);
 
-                /* This is the XML declaration */
-                if (0 == strcmp(lex, "<?xml")) {
-                    struct XMLNode *desc = XMLNode_init(NULL);
                     lexi = 0;
+                }
 
-                    lxmlParseAttrs(buf, &i, lex, &lexi, desc);
+                /* End of node */
+                if ('/' == buf[i + 1]) {
+                    i += 2;
 
-                    doc.version = desc->getAttributeValue(desc, "version");
-                    doc.encoding = desc->getAttributeValue(desc, "encoding");
+                    doc.success = lxmlParseEndOfNode(buf, &i, lex, LEX_BUF_SIZE, &lexi);
 
-                    desc->free(desc);
-                    free(desc);
-                    desc = NULL;
+                    if (NULL == curr_node) {
+                        fprintf(stderr, "Already at the root\n");
+                        break;
+                    }
+
+                    if (0 != strcmp(NULL == curr_node->tag ? "" : curr_node->tag, lex)) {
+                        fprintf(stderr, "Mismatched tags (%s != %s)\n", curr_node->tag, lex);
+                        break;
+                    }
+
+                    curr_node = curr_node->parent;
+                    i++;
                     continue;
                 }
-            }
 
-            /* Set current node */
-            tmp = curr_node->createAndAppend(curr_node);
-
-            if (NULL != tmp) {
-                enum TagType type = TAG_UNSUPPORTED;
-                ++i;
-                /* Start tag */
-                type = lxmlParseAttrs(buf, &i, lex, &lexi, tmp);
-
-                if (TAG_INLINE != type) {
-                    /* Set tag name if none */
+                /* Special nodes */
+                if ('!' == buf[i + 1]) {
+                    while (' ' != buf[i]  && '>' != buf[i])
+                        lex[lexi++] = buf[i++];
                     lex[lexi] = '\0';
 
-                    if (NULL == curr_node->tag)
-                        curr_node->tag = lxmlStrdup(lex);
-
-                    /* Reset lexer */
-                    lexi = 0;
-                    curr_node = tmp;
+                    /* Comments */
+                    if (0 == strcmp(lex, "<!--")) {
+                        lex[lexi] = '\0';
+                        while (FALSE == lxmlEndsWith(lex, "-->")) {
+                            lex[lexi++] = buf[i++];
+                            lex[lexi] = '\0';
+                        }
+                        continue;
+                    }
                 }
-                
-                ++i;
-                continue;
+
+                /* Declaration tags */
+                if ('?' == buf[i + 1]) {
+                    while (' ' != buf[i] && '>' != buf[i])
+                        lex[lexi++] = buf[i++];
+                    lex[lexi] = '\0';
+
+                    /* This is the XML declaration */
+                    if (0 == strcmp(lex, "<?xml")) {
+                        struct XMLNode *desc = XMLNode_init(NULL);
+                        lexi = 0;
+
+                        lxmlParseAttrs(buf, &i, lex, &lexi, desc);
+
+                        doc.version = desc->getAttributeValue(desc, "version");
+                        doc.encoding = desc->getAttributeValue(desc, "encoding");
+
+                        desc->free(desc);
+                        free(desc);
+                        desc = NULL;
+                        continue;
+                    }
+                }
+
+                /* Set current node */
+                tmp = curr_node->createAndAppend(curr_node);
+
+                if (NULL != tmp) {
+                    enum TagType type = TAG_UNSUPPORTED;
+                    ++i;
+                    /* Start tag */
+                    type = lxmlParseAttrs(buf, &i, lex, &lexi, tmp);
+
+                    if (TAG_INLINE != type) {
+                        /* Set tag name if none */
+                        lex[lexi] = '\0';
+
+                        if (NULL == curr_node->tag)
+                            curr_node->tag = lxmlStrdup(lex);
+
+                        /* Reset lexer */
+                        lexi = 0;
+                        curr_node = tmp;
+                    }
+
+                    ++i;
+                    continue;
+                } else {
+                    /* FIXME: Error */
+                    break;
+                }
             } else {
-                /* FIXME: Error */
-                break;
+                lex[lexi++] = buf[i++];
             }
-        } else {
-            lex[lexi++] = buf[i++];
         }
+
+        if ('\0' == buf[i])
+            doc.success = TRUE;
+
+        free(buf);
+        buf = NULL;
     }
-
-    if ('\0' == buf[i])
-        doc.success = TRUE;
-
-    free(buf);
 
     return doc;
 } /* End of XMLDocument_load */
@@ -408,7 +411,7 @@ int XMLDocument_write(struct XMLDocument *doc, FILE *fp, int indent) {
             (doc->version) ? doc->version : "1.0",
             (doc->encoding) ? doc->encoding : "UTF-8"
         );
-        node_out(fp, doc->root, indent, 0);
+        node_out(fp, doc->root, NULL, indent, 0);
     }
     return TRUE;
 } /* End of XMLDocument_write */
@@ -532,7 +535,7 @@ static char* XMLAttributeList_getAttributeValue(struct XMLAttributeList *self, c
         for (; i < self->size; ++i) {
             struct XMLAttribute *attr = self->attribute[i];
 
-            if (NULL != attr) {
+            if (NULL != attr && NULL != attr->key) {
                 if (0 == strcmp(attr->key, key)) {
                     attrVal = lxmlStrdup(attr->value);
                     break;
@@ -726,7 +729,7 @@ static void XMLNodeList_free(struct XMLNodeList *self) {
         free(self->data);
         self->data = NULL;
 
-        memset(self, '\0', sizeof(struct XMLNodeList));
+        *self = XMLNodeList_init();
     }
 } /* End of XMLNodeList_free */
 
@@ -888,14 +891,15 @@ static char* lxmlReadXmlContentsIntoMemory(FILE *fp) {
     return buf;
 } /* End of lxmlReadXmlContentsIntoMemory */
 
-static void node_out(FILE *file, struct XMLNode *node, int indent, int times) {
+static void node_out(FILE *file, struct XMLNode *node, const char * const indentation, int indent, int times) {
     size_t i = 0, j = 0;
+    const char * const indentationStr = (NULL != indentation) ? indentation : " ";
 
     for (; i < node->children.size; ++i) {
         struct XMLNode *child = node->children.data[i];
 
         if (times > 0)
-            fprintf(file, "%*s", indent * times, " ");
+            fprintf(file, "%*s", indent * times, indentationStr);
 
         fprintf(file, "<%s", child->tag);
         for (j = 0; j < child->attributes.size; ++j) {
@@ -913,7 +917,7 @@ static void node_out(FILE *file, struct XMLNode *node, int indent, int times) {
                 fprintf(file, "%s</%s>\n", child->inner_text, child->tag);
             else {
                 fprintf(file, "\n");
-                node_out(file, child, indent, times + 1);
+                node_out(file, child, indentationStr, indent, times + 1);
                 if (times > 0)
                     fprintf(file, "%*s", indent * times, " ");
                 fprintf(file, "</%s>\n", child->tag);
