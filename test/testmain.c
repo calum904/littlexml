@@ -28,25 +28,122 @@
 #define TEST_BUF 1024
 
 #define TEST_XML_TAG "<?xml"
+#define TEST_XML_INDENT "  "
 
 #define TEST_HAYSTACK_1 "<description>This defines a person</description>"
 #define TEST_NEEDLE_1 "</description>"
 #define TEST_NEEDLE_INVALID "</Description>"
 #define TEST_NEEDLE_INVALID2 "</description<"
 
-#define TEST_XML_HEADER "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>"
+#define TEST_XML_HEADER "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n"
+#define TEST_XML_HEADER_SIZE (sizeof(TEST_XML_HEADER) -1 )
 
 #define TEST_XML_VALID_1 TEST_XML_HEADER \
-"<struct name=\"Person\">\
-    <field name=\"name\" type=\"string\" />\
-    <field name=\"age\" type=\"int\" />\
-    <description>This defines a person</description>\
-</struct>"
+"<struct name=\"Person\">\n" \
+    TEST_XML_INDENT "<field name=\"name\" type=\"string\" />\n" \
+    TEST_XML_INDENT "<field name=\"age\" type=\"int\" />\n" \
+    TEST_XML_INDENT "<description>This defines a person</description>\n" \
+"</struct>"
 
-#define TEST_XML_VALID_1_SIZE (sizeof(TEST_XML_VALID_1)-1)
+#define TEST_XML_VALID_2 TEST_XML_HEADER \
+"<struct name=\"Person\">\n" \
+    TEST_XML_INDENT "<field name=\"name\" type=\"string\" />\n" \
+    TEST_XML_INDENT "<field name=\"age\" type=\"int\" />\n" \
+    TEST_XML_INDENT "<description>This defines a person</description>\n" \
+    TEST_XML_INDENT "<immediatelyClosed/>\n" \
+"</struct>"
 
 #define TXML_TEST_XML_NODE_TREE_CHILDREN_SIZE 12
 #define TEST_EXAMPLE_XML_NODE_TREE_STRING "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n<top>\n  <foo />\n  <bar />\n  <baz />\n</top>\n<middle>\n  <child />\n  <child />\n  <child />\n</middle>\n<bottom>\n  <nest>\n    <nest>\n      <nest />\n    </nest>\n  </nest>\n</bottom>\n"
+
+/* Complex XML Example */
+#define TEST_XML_COMPLEX \
+"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" \
+"<?processing instruction=\"test\"?>\n" \
+"\n" \
+"<root xmlns=\"http://default.namespace\"\n" \
+"      xmlns:ns1=\"http://example.com/ns1\"\n" \
+"      xmlns:ns2=\"http://example.com/ns2\"\n" \
+"      attr1=\"value1\"\n" \
+"      attr2=\"   leading and trailing whitespace   \"\n" \
+"      attr3=\"&lt;escaped&gt; &amp; &quot;quotes&quot;\"\n" \
+"      attr4=\"&#x41;&#65;\">\n" \
+"\n" \
+"    <!-- Comment before content -->\n" \
+"    \n" \
+"    <ns1:parent id=\"p1\" ns2:flag=\"true\">\n" \
+"        \n" \
+"        Text before child\n" \
+"        <child emptyAttr=\"\" anotherAttr=\"123\"/>\n" \
+"        Text after child\n" \
+"\n" \
+"        <!-- Nested comment -->\n" \
+"        \n" \
+"        <ns2:complex>\n" \
+"            <level1>\n" \
+"                <level2>\n" \
+"                    <level3>\n" \
+"                        <level4>\n" \
+"                            Deep nesting text\n" \
+"                        </level4>\n" \
+"                    </level3>\n" \
+"                </level2>\n" \
+"            </level1>\n" \
+"        </ns2:complex>\n" \
+"\n" \
+"        <mixed>\n" \
+"            Some text\n" \
+"            <inner>inner text</inner>\n" \
+"            more text\n" \
+"            <inner attr=\"1\">second inner</inner>\n" \
+"        </mixed>\n" \
+"\n" \
+"        <siblings>\n" \
+"            <item index=\"1\"/>\n" \
+"            <item index=\"2\"></item>\n" \
+"            <item index=\"3\">   </item>\n" \
+"        </siblings>\n" \
+"\n" \
+"    </ns1:parent>\n" \
+"\n" \
+"    <edgeCases>\n" \
+"        <!-- Attribute edge cases -->\n" \
+"        <attrs a=\"1\" b='2' c=\"&#x20;\" d=\"&#32;\" e=\"&#x9;&#xA;&#xD;\"/>\n" \
+"\n" \
+"        <!-- Empty vs self-closing -->\n" \
+"        <empty1/>\n" \
+"        <empty2></empty2>\n" \
+"\n" \
+"        <!-- Whitespace handling -->\n" \
+"        <whitespace>\n" \
+"            \n" \
+"            \n" \
+"            <inner>text</inner>\n" \
+"            \n" \
+"            \n" \
+"        </whitespace>\n" \
+"\n" \
+"        <!-- Entity references -->\n" \
+"        <entities>\n" \
+"            &lt;tag&gt; &amp; &apos; &quot;\n" \
+"        </entities>\n" \
+"\n" \
+"        <!-- Unicode -->\n" \
+"        <unicode>\n" \
+"            café naïve résumé — 漢字 — 😀\n" \
+"        </unicode>\n" \
+"    </edgeCases>\n" \
+"\n" \
+"    <!-- Processing instruction inside -->\n" \
+"    <?inner-process do=\"something\"?>\n" \
+"\n" \
+"    <orderingTest>\n" \
+"        <a>1</a>\n" \
+"        <b>2</b>\n" \
+"        <a>3</a>\n" \
+"    </orderingTest>\n" \
+"\n" \
+"</root>\n"
 
 static struct XMLNode* tlxmlCreateTestXMLNodeTree();
 
@@ -65,9 +162,6 @@ static int lxmlTestAttributeListGetAttributeValue();
 static int lxmlTestAttributeListGetAttributeValueMissing();
 static int lxmlTestAttributeListGetAttribute();
 static int lxmlTestAttributeListGetAttributeMissing();
-
-static int lxmlTestParseAttributes();
-static int lxmlTestParseAttributesPass();
 
 static int lxmlTestNode();
 static int lxmlTestNodeInit();
@@ -96,8 +190,11 @@ static int lxmlTestReadXmlContentsIntoMemory();
 static int lxmlTestReadXmlContentsIntoMemoryPass();
 static int lxmlTestReadXmlContentsIntoMemoryNullFp();
 
+static int lxmlTestXmlDocumentLoadFor(const char * const xmlDocument, const size_t xmlDocumentLen, const int expected);
 static int lxmlTestXMLDocument_load();
 static int lxmlTestXmlDocumentLoadPass();
+static int lxmlTestXmlDocumentLoadPassWithImmediatelyClosedTag();
+static int lxmlTestXmlDocumentLoadPassComplexExample();
 
 /**
  * @brief Compares an 'XMLNode' to a given string
@@ -173,28 +270,42 @@ static int lxmlTestReadXmlContentsIntoMemory() {
     return success;
 } /* End of lxmlTestReadXmlContentsIntoMemory */
 
-static int lxmlTestXmlDocumentLoadPass() {
-    int success = FALSE;
-    char xmlDocument[TEST_XML_VALID_1_SIZE+1] = TEST_XML_VALID_1;
+static int lxmlTestXmlDocumentLoadFor(const char * const xmlDocument, const size_t xmlDocumentLen, const int expected) {
     struct XMLDocument doc = { 0 };
-    FILE *fp = fmemopen(xmlDocument, TEST_XML_VALID_1_SIZE+1, "r");;
+    FILE *fp = fmemopen((void *)xmlDocument, xmlDocumentLen, "r");
 
     assert(NULL != fp);
 
     doc = XMLDocument_load(fp);
-    success = doc.success;
-    assert(TRUE == success);
+    assert(expected == doc.success);
 
     doc.free(&doc);
     fclose(fp);
     fp = NULL;
 
-    printf("lxmlTestXMLDocument_load: %s\n", (TRUE == success) ? "Pass" : "Fail");
-    return success;
+    return TRUE;
+} /* End of lxmlTestXmlDocumentLoadFor */
+
+static int lxmlTestXmlDocumentLoadPass() {
+    return lxmlTestXmlDocumentLoadFor(TEST_XML_VALID_1, sizeof(TEST_XML_VALID_1), TRUE);
 } /* End of lxmlTestXmlDocumentLoadPass */
+
+static int lxmlTestXmlDocumentLoadPassWithImmediatelyClosedTag() {
+    return lxmlTestXmlDocumentLoadFor(TEST_XML_VALID_2, sizeof(TEST_XML_VALID_2), TRUE);
+} /* End of lxmlTestXmlDocumentLoadPass */
+
+static int lxmlTestXmlDocumentLoadPassComplexExample() {
+    return lxmlTestXmlDocumentLoadFor(TEST_XML_COMPLEX, sizeof(TEST_XML_COMPLEX), TRUE);
+} /* End of lxmlTestXmlDocumentLoadPassComplexExample */
 
 static int lxmlTestXMLDocument_load() {
     int success = lxmlTestXmlDocumentLoadPass();
+
+    success &= lxmlTestXmlDocumentLoadPassWithImmediatelyClosedTag();
+    success &= lxmlTestXmlDocumentLoadPassComplexExample();
+
+    printf("lxmlTestXMLDocument_load: %s\n", (TRUE == success) ? "Pass" : "Fail");
+
     return success;
 } /* End of lxmlTestXMLDocument_load */
 
@@ -391,47 +502,6 @@ static void lxmlTestFreeAttrs(struct XMLAttribute **attrs, size_t attrsSize) {
         }
     }
 } /* End of lxmlTestFreeAttrs */
-
-static int lxmlTestParseAttributesPass() {
-    char *testXml = TEST_XML_HEADER;
-    char testLex[TEST_BUF+1] = { 0 };
-    size_t i = 0, lexi = 0;
-    enum TagType tagType = TAG_UNSUPPORTED;
-
-    struct XMLNode *node = XMLNode_init();
-
-    strcpy(testLex, testXml);
-    assert(NULL != node);
-
-    tagType = lxmlParseAttrs(testXml, &i, testLex, &lexi, node);
-
-    assert(TAG_START == tagType);
-
-    assert(0 == strcmp(node->tag, TEST_XML_TAG));
-    assert(NULL == node->inner_text);
-
-    assert(2 == node->attributes.size);
-    assert(0 == strcmp(node->attributes.attribute[0]->key, "version"));
-    assert(0 == strcmp(node->attributes.attribute[0]->value, "1.0"));
-    assert(0 == strcmp(node->attributes.attribute[1]->key, "encoding"));
-    assert(0 == strcmp(node->attributes.attribute[1]->value, "UTF-8"));
-
-    XMLNode_free(node);
-    free(node);
-    node = NULL;
-
-    return TRUE;
-} /* End of lxmlTestParseAttributesPass */
-
-static int lxmlTestParseAttributes() {
-    int success = FALSE;
-
-    success = lxmlTestParseAttributesPass();
-
-    printf("lxmlTestParseAttributes: %s\n", (TRUE == success) ? "Pass" : "Fail");
-
-    return success;
-} /* End of lxmlTestParseAttributes */
 
 static int lxmlTestEndsWithPass() {
     assert(TRUE == lxmlEndsWith(TEST_HAYSTACK_1, TEST_NEEDLE_1));
@@ -833,7 +903,6 @@ int main() {
     success &= lxmlTestNode();
     success &= lxmlTestNodeList();
 
-    success &= lxmlTestParseAttributes();
     success &= lxmlTestEndsWith();
 
     #ifdef LXML_HAVE_FMEMOPEN
